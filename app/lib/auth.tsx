@@ -101,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 // ========================
 // useAuth Hook
 // ========================
+//triggering rebuild
 
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
