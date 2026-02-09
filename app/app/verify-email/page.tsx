@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
-import { auth } from "@/lib/firebase";
+import { getFirebaseAuth } from "@/lib/firebase";
 
 export default function VerifyEmailPage() {
   const { user, loading, sendVerification, logOut } = useAuth();
@@ -31,10 +31,11 @@ export default function VerifyEmailPage() {
     if (!user || user.emailVerified) return;
 
     const interval = setInterval(async () => {
-      await auth.currentUser?.reload();
-      if (auth.currentUser?.emailVerified) {
+      const currentUser = getFirebaseAuth().currentUser;
+      await currentUser?.reload();
+      if (currentUser?.emailVerified) {
         // Force token refresh so RTDB security rules see email_verified: true
-        await auth.currentUser.getIdToken(true);
+        await currentUser.getIdToken(true);
         router.replace("/chat");
       }
     }, 5000);

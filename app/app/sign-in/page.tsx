@@ -3,7 +3,7 @@
 import { useState, useEffect, FormEvent } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
-import { auth } from "@/lib/firebase";
+import { getFirebaseAuth } from "@/lib/firebase";
 import Link from "next/link";
 
 export default function SignInPage() {
@@ -31,7 +31,7 @@ export default function SignInPage() {
 
     try {
       await signIn(email, password);
-      if (auth.currentUser?.emailVerified) {
+      if (getFirebaseAuth().currentUser?.emailVerified) {
         router.replace("/chat");
       } else {
         router.replace("/verify-email");

@@ -10,7 +10,7 @@ import {
   remove,
   serverTimestamp,
 } from "firebase/database";
-import { db } from "@/lib/firebase";
+import { getFirebaseDb } from "@/lib/firebase";
 import type { Room } from "@/lib/types";
 
 // ========================
@@ -67,7 +67,7 @@ export function useRoom(roomId: string | null, uid: string | undefined) {
       terminatedRef.current = true;
       setTerminated(true);
 
-      const roomRef = ref(db, `rooms/${roomId}`);
+      const roomRef = ref(getFirebaseDb(), `rooms/${roomId}`);
 
       try {
         // Phase 1: Mark as terminating
@@ -106,7 +106,7 @@ export function useRoom(roomId: string | null, uid: string | undefined) {
   useEffect(() => {
     if (!roomId || !uid) return;
 
-    const roomRef = ref(db, `rooms/${roomId}`);
+    const roomRef = ref(getFirebaseDb(), `rooms/${roomId}`);
     const unsub = onValue(roomRef, (snapshot) => {
       const data = snapshot.val() as Room | null;
       setRoom(data);
@@ -140,7 +140,7 @@ export function useRoom(roomId: string | null, uid: string | undefined) {
   useEffect(() => {
     if (!roomId || !uid || terminatedRef.current) return;
 
-    const heartbeatPath = ref(db, `rooms/${roomId}/presence/${uid}/heartbeat`);
+    const heartbeatPath = ref(getFirebaseDb(), `rooms/${roomId}/presence/${uid}/heartbeat`);
 
     // Write initial heartbeat immediately
     set(heartbeatPath, serverTimestamp()).catch(() => {});
@@ -174,7 +174,7 @@ export function useRoom(roomId: string | null, uid: string | undefined) {
     if (!roomId || !partnerUid || terminatedRef.current) return;
 
     const partnerPath = ref(
-      db,
+      getFirebaseDb(),
       `rooms/${roomId}/presence/${partnerUid}/heartbeat`
     );
 

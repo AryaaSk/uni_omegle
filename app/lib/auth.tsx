@@ -16,7 +16,7 @@ import {
   signOut,
   User,
 } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { getFirebaseAuth } from "@/lib/firebase";
 
 // ========================
 // University Email Validation
@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(getFirebaseAuth(), (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
     });
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
     }
     const credential = await createUserWithEmailAndPassword(
-      auth,
+      getFirebaseAuth(),
       email,
       password
     );
@@ -76,16 +76,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
   }, []);
 
   const logOut = useCallback(async () => {
-    await signOut(auth);
+    await signOut(getFirebaseAuth());
   }, []);
 
   const sendVerification = useCallback(async () => {
-    if (auth.currentUser) {
-      await sendEmailVerification(auth.currentUser);
+    const currentUser = getFirebaseAuth().currentUser;
+    if (currentUser) {
+      await sendEmailVerification(currentUser);
     }
   }, []);
 

@@ -10,7 +10,7 @@ import {
   serverTimestamp,
   Unsubscribe,
 } from "firebase/database";
-import { db } from "@/lib/firebase";
+import { getFirebaseDb } from "@/lib/firebase";
 import type { MatchmakingStatus, QueueEntry } from "@/lib/types";
 
 // ========================
@@ -26,13 +26,13 @@ function computeRoomId(uidA: string, uidB: string): string {
 // ========================
 
 async function joinQueue(uid: string): Promise<void> {
-  await set(ref(db, `queue/${uid}`), {
+  await set(ref(getFirebaseDb(), `queue/${uid}`), {
     joinedAt: serverTimestamp(),
   });
 }
 
 async function leaveQueue(uid: string): Promise<void> {
-  await remove(ref(db, `queue/${uid}`));
+  await remove(ref(getFirebaseDb(), `queue/${uid}`));
 }
 
 // ========================
@@ -55,7 +55,7 @@ async function createRoomAndNotify(
   const roomId = computeRoomId(uid, partnerUid);
 
   // 1. Create the room
-  await set(ref(db, `rooms/${roomId}`), {
+  await set(ref(getFirebaseDb(), `rooms/${roomId}`), {
     users: [uid, partnerUid].sort(),
     owner: uid,
     status: "active",
@@ -67,11 +67,11 @@ async function createRoomAndNotify(
   });
 
   // 2. Notify both users of their room assignment
-  await set(ref(db, `matches/${partnerUid}`), roomId);
-  await set(ref(db, `matches/${uid}`), roomId);
+  await set(ref(getFirebaseDb(), `matches/${partnerUid}`), roomId);
+  await set(ref(getFirebaseDb(), `matches/${uid}`), roomId);
 
   // 3. Remove both users from queue atomically
-  await update(ref(db), {
+  await update(ref(getFirebaseDb()), {
     [`queue/${uid}`]: null,
     [`queue/${partnerUid}`]: null,
   });
@@ -120,7 +120,7 @@ export function useMatchmaking(uid: string | undefined) {
       setStatus("queued");
 
       // Watch for match notifications (in case another user matches us)
-      const matchRef = ref(db, `matches/${uid}`);
+      const matchRef = ref(getFirebaseDb(), `matches/${uid}`);
       const matchUnsub = onValue(matchRef, async (snapshot) => {
         const matchedRoomId = snapshot.val() as string | null;
         if (matchedRoomId) {
@@ -132,7 +132,7 @@ export function useMatchmaking(uid: string | undefined) {
       unsubscribesRef.current.push(matchUnsub);
 
       // Watch the queue for potential matches
-      const queueRef = ref(db, "queue");
+      const queueRef = ref(getFirebaseDb(), "queue");
       const queueUnsub = onValue(queueRef, async (snapshot) => {
         if (attemptingRef.current) return;
 
@@ -180,7 +180,7 @@ export function useMatchmaking(uid: string | undefined) {
     attemptingRef.current = false;
     try {
       await leaveQueue(uid);
-      await remove(ref(db, `matches/${uid}`));
+      await remove(ref(getFirebaseDb(), `matches/${uid}`));
     } catch {
       // Best effort cleanup
     }
@@ -194,7 +194,7 @@ export function useMatchmaking(uid: string | undefined) {
       cleanup();
       if (uid) {
         leaveQueue(uid).catch(() => {});
-        remove(ref(db, `matches/${uid}`)).catch(() => {});
+        remove(ref(getFirebaseDb(), `matches/${uid}`)).catch(() => {});
       }
     };
   }, [uid, cleanup]);

@@ -12,8 +12,10 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Lazy singleton: defers initialization until first access.
+// Lazy singletons: defers initialization until first access.
 // This prevents build-time errors when env vars aren't set (e.g., during SSG).
+// Returns the REAL Firebase instances (not Proxies) so that internal methods,
+// listener registrations, and identity checks work correctly.
 let _app: FirebaseApp | null = null;
 let _auth: Auth | null = null;
 let _db: Database | null = null;
@@ -25,17 +27,12 @@ function getFirebaseApp(): FirebaseApp {
   return _app;
 }
 
-// Use getters so Firebase only initializes when client-side code actually runs
-export const auth: Auth = new Proxy({} as Auth, {
-  get(_, prop) {
-    if (!_auth) _auth = getAuth(getFirebaseApp());
-    return (_auth as unknown as Record<string | symbol, unknown>)[prop];
-  },
-});
+export function getFirebaseAuth(): Auth {
+  if (!_auth) _auth = getAuth(getFirebaseApp());
+  return _auth;
+}
 
-export const db: Database = new Proxy({} as Database, {
-  get(_, prop) {
-    if (!_db) _db = getDatabase(getFirebaseApp());
-    return (_db as unknown as Record<string | symbol, unknown>)[prop];
-  },
-});
+export function getFirebaseDb(): Database {
+  if (!_db) _db = getDatabase(getFirebaseApp());
+  return _db;
+}

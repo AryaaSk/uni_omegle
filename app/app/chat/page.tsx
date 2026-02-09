@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useMatchmaking } from "@/lib/matchmaking";
 import { ref, get, remove, update, serverTimestamp } from "firebase/database";
-import { db } from "@/lib/firebase";
+import { getFirebaseDb } from "@/lib/firebase";
 import AuthGuard from "@/components/AuthGuard";
 import VideoChat from "@/components/VideoChat";
 import Navbar from "@/components/Navbar";
@@ -42,16 +42,16 @@ function ChatContent() {
   useEffect(() => {
     if (!uid || chatState !== "idle") return;
 
-    get(ref(db, `matches/${uid}`)).then(async (snapshot) => {
+    get(ref(getFirebaseDb(), `matches/${uid}`)).then(async (snapshot) => {
       const existingRoomId = snapshot.val() as string | null;
       if (!existingRoomId) return;
 
-      const roomSnapshot = await get(ref(db, `rooms/${existingRoomId}`));
+      const roomSnapshot = await get(ref(getFirebaseDb(), `rooms/${existingRoomId}`));
       const room = roomSnapshot.val() as Room | null;
 
       if (!room || room.status !== "active") {
         // Room no longer exists or is terminating — clean up
-        await remove(ref(db, `matches/${uid}`));
+        await remove(ref(getFirebaseDb(), `matches/${uid}`));
         return;
       }
 
@@ -64,19 +64,19 @@ function ChatContent() {
 
       if (isStale) {
         // Room is stale — trigger two-phase termination
-        await update(ref(db, `rooms/${existingRoomId}`), {
+        await update(ref(getFirebaseDb(), `rooms/${existingRoomId}`), {
           status: "terminating",
           terminatedBy: uid,
           terminatedAt: serverTimestamp(),
         });
         // Schedule final deletion after grace period
         setTimeout(async () => {
-          const check = await get(ref(db, `rooms/${existingRoomId}`));
+          const check = await get(ref(getFirebaseDb(), `rooms/${existingRoomId}`));
           if (check.exists() && check.val().status === "terminating") {
-            await remove(ref(db, `rooms/${existingRoomId}`));
+            await remove(ref(getFirebaseDb(), `rooms/${existingRoomId}`));
           }
         }, 10_000);
-        await remove(ref(db, `matches/${uid}`));
+        await remove(ref(getFirebaseDb(), `matches/${uid}`));
         return;
       }
 
@@ -98,7 +98,7 @@ function ChatContent() {
     if (status === "matched" && roomId && uid) {
       setActiveRoomId(roomId);
 
-      get(ref(db, `rooms/${roomId}`)).then((snapshot) => {
+      get(ref(getFirebaseDb(), `rooms/${roomId}`)).then((snapshot) => {
         const room = snapshot.val() as Room | null;
         if (room) {
           setIsInitiator(room.owner === uid);
@@ -124,7 +124,7 @@ function ChatContent() {
 
   // "End Chat" — go back to idle
   const handleDisconnect = useCallback(() => {
-    if (uid) remove(ref(db, `matches/${uid}`)).catch(() => {});
+    if (uid) remove(ref(getFirebaseDb(), `matches/${uid}`)).catch(() => {});
     setActiveRoomId(null);
     setIsInitiator(false);
     setChatState("idle");
@@ -132,7 +132,7 @@ function ChatContent() {
 
   // "Next" — terminate current room and immediately re-queue
   const handleNext = useCallback(() => {
-    if (uid) remove(ref(db, `matches/${uid}`)).catch(() => {});
+    if (uid) remove(ref(getFirebaseDb(), `matches/${uid}`)).catch(() => {});
     setActiveRoomId(null);
     setIsInitiator(false);
     setChatState("searching");

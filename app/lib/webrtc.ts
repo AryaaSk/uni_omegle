@@ -9,7 +9,7 @@ import {
   onChildAdded,
   off,
 } from "firebase/database";
-import { db } from "@/lib/firebase";
+import { getFirebaseDb } from "@/lib/firebase";
 
 // ========================
 // ICE Server Configuration
@@ -140,9 +140,9 @@ export function useWebRTC({
 
     // Track RTDB refs for cleanup
     const signalingBase = `rooms/${roomId}/signaling`;
-    const offerRef = ref(db, `${signalingBase}/offer`);
-    const answerRef = ref(db, `${signalingBase}/answer`);
-    const partnerCandidatesRef = ref(db, `${signalingBase}/iceCandidates/${partnerUid}`);
+    const offerRef = ref(getFirebaseDb(), `${signalingBase}/offer`);
+    const answerRef = ref(getFirebaseDb(), `${signalingBase}/answer`);
+    const partnerCandidatesRef = ref(getFirebaseDb(), `${signalingBase}/iceCandidates/${partnerUid}`);
 
     async function setup() {
       try {
@@ -182,7 +182,7 @@ export function useWebRTC({
 
         // 5. Send ICE candidates to RTDB as they're generated
         // Each user pushes their candidates under their own UID
-        const myCandidatesRef = ref(db, `${signalingBase}/iceCandidates/${uid}`);
+        const myCandidatesRef = ref(getFirebaseDb(), `${signalingBase}/iceCandidates/${uid}`);
         pc.onicecandidate = (event) => {
           if (event.candidate) {
             push(myCandidatesRef, event.candidate.toJSON());
