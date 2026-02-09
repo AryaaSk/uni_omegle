@@ -8,7 +8,6 @@ import {
   update,
   onValue,
   serverTimestamp,
-  runTransaction,
   Unsubscribe,
 } from "firebase/database";
 import { getFirebaseDb } from "@/lib/firebase";
@@ -39,16 +38,19 @@ async function leaveQueue(uid: string): Promise<void> {
 // ========================
 // Room Creation + Notification
 //
-// When a client sees >= 2 users in the queue, it:
-// 1. Creates the room atomically via runTransaction (only first writer wins)
-// 2. Writes roomId to matches/{uid} for both users + removes both from queue
+// Single atomic multi-path update that:
+// 1. Creates/updates room core data (users, status, createdAt)
+// 2. Writes the caller's own presence heartbeat
+// 3. Writes roomId to matches/{uid} for both users
+// 4. Removes both users from the queue
 //
-// runTransaction prevents the double-creation race: if both clients
-// try to create simultaneously, only one succeeds. The other's
-// transaction aborts because the room already exists.
+// Both clients may call this for the same pair — it's idempotent:
+// same sorted users array, same status, and each writes only their
+// own presence path (so they don't overwrite each other).
 //
-// Only the creator's presence is written. The partner writes their
-// own presence when their useRoom hook mounts.
+// This avoids runTransaction, which requires read access on the room
+// path — problematic for rooms that don't exist yet (read rules
+// check users array membership, which is empty before creation).
 // ========================
 
 async function createRoomAndNotify(
@@ -58,25 +60,11 @@ async function createRoomAndNotify(
   const roomId = computeRoomId(uid, partnerUid);
   const sortedUsers = [uid, partnerUid].sort() as [string, string];
 
-  // 1. Create room via transaction — only first writer succeeds
-  const roomRef = ref(getFirebaseDb(), `rooms/${roomId}`);
-  await runTransaction(roomRef, (currentData) => {
-    if (currentData !== null) {
-      // Room already exists — abort (partner created it first)
-      return undefined;
-    }
-    return {
-      users: sortedUsers,
-      status: "active",
-      createdAt: serverTimestamp(),
-      presence: {
-        [uid]: { heartbeat: serverTimestamp() },
-      },
-    };
-  });
-
-  // 2. Notify both users + remove both from queue — single atomic write
   await update(ref(getFirebaseDb()), {
+    [`rooms/${roomId}/users`]: sortedUsers,
+    [`rooms/${roomId}/status`]: "active",
+    [`rooms/${roomId}/createdAt`]: serverTimestamp(),
+    [`rooms/${roomId}/presence/${uid}/heartbeat`]: serverTimestamp(),
     [`matches/${uid}`]: roomId,
     [`matches/${partnerUid}`]: roomId,
     [`queue/${uid}`]: null,
