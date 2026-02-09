@@ -1,17 +1,28 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
+import { auth } from "@/lib/firebase";
 import Link from "next/link";
 
 export default function SignInPage() {
-  const { signIn } = useAuth();
+  const { user, loading, signIn } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Redirect authenticated users away from sign-in
+  useEffect(() => {
+    if (loading) return;
+    if (user?.emailVerified) {
+      router.replace("/chat");
+    } else if (user) {
+      router.replace("/verify-email");
+    }
+  }, [user, loading, router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -20,20 +31,25 @@ export default function SignInPage() {
 
     try {
       await signIn(email, password);
-      // onAuthStateChanged will fire; check verification status
-      const { auth } = await import("@/lib/firebase");
       if (auth.currentUser?.emailVerified) {
-        router.push("/chat");
+        router.replace("/chat");
       } else {
-        router.push("/verify-email");
+        router.replace("/verify-email");
       }
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Sign in failed. Please try again.";
       setError(message);
-    } finally {
       setSubmitting(false);
     }
+  }
+
+  if (loading || user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-foreground/20 border-t-foreground" />
+      </div>
+    );
   }
 
   return (

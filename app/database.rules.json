@@ -7,12 +7,7 @@
       }
     },
 
-    "lock": {
-      ".read": "auth != null && auth.token.email_verified === true",
-      ".write": "auth != null && auth.token.email_verified === true"
-    },
-
-    "matches": {
+"matches": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid && auth.token.email_verified === true",
         ".write": "auth != null && auth.token.email_verified === true"

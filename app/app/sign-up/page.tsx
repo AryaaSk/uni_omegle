@@ -1,18 +1,28 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function SignUpPage() {
-  const { signUp } = useAuth();
+  const { user, loading, signUp } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Redirect authenticated users away from sign-up
+  useEffect(() => {
+    if (loading) return;
+    if (user?.emailVerified) {
+      router.replace("/chat");
+    } else if (user) {
+      router.replace("/verify-email");
+    }
+  }, [user, loading, router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -31,14 +41,21 @@ export default function SignUpPage() {
     setSubmitting(true);
     try {
       await signUp(email, password);
-      router.push("/verify-email");
+      router.replace("/verify-email");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Sign up failed. Please try again.";
       setError(message);
-    } finally {
       setSubmitting(false);
     }
+  }
+
+  if (loading || user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-foreground/20 border-t-foreground" />
+      </div>
+    );
   }
 
   return (

@@ -131,7 +131,10 @@ export function useWebRTC({
   // ========================
 
   useEffect(() => {
-    if (!roomId || !uid || !partnerUid || closedRef.current) return;
+    if (!roomId || !uid || !partnerUid) return;
+
+    // Reset so that re-runs (e.g. React strict mode remount) work
+    closedRef.current = false;
 
     let isCancelled = false;
 
@@ -173,9 +176,7 @@ export function useWebRTC({
         setRemoteStream(remote);
 
         pc.ontrack = (event) => {
-          event.streams[0]?.getTracks().forEach((track) => {
-            remote.addTrack(track);
-          });
+          remote.addTrack(event.track);
           setRemoteStream(new MediaStream(remote.getTracks()));
         };
 
@@ -198,13 +199,27 @@ export function useWebRTC({
         };
 
         // 7. Listen for the partner's ICE candidates
-        // onChildAdded fires for each new candidate the partner pushes
+        // Buffer candidates that arrive before remoteDescription is set
+        const pendingCandidates: RTCIceCandidateInit[] = [];
+
+        async function flushCandidates() {
+          for (const c of pendingCandidates) {
+            await pc.addIceCandidate(new RTCIceCandidate(c)).catch((err) => {
+              console.warn("Failed to add ICE candidate:", err);
+            });
+          }
+          pendingCandidates.length = 0;
+        }
+
         onChildAdded(partnerCandidatesRef, (snapshot) => {
           const candidate = snapshot.val();
-          if (candidate && pc.remoteDescription) {
+          if (!candidate) return;
+          if (pc.remoteDescription) {
             pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((err) => {
               console.warn("Failed to add ICE candidate:", err);
             });
+          } else {
+            pendingCandidates.push(candidate);
           }
         });
 
@@ -225,6 +240,7 @@ export function useWebRTC({
               await pc.setRemoteDescription(
                 new RTCSessionDescription(answer)
               );
+              await flushCandidates();
             }
           });
         } else {
@@ -235,6 +251,7 @@ export function useWebRTC({
               await pc.setRemoteDescription(
                 new RTCSessionDescription(offer)
               );
+              await flushCandidates();
               const answer = await pc.createAnswer();
               await pc.setLocalDescription(answer);
               await set(answerRef, {

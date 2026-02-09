@@ -17,6 +17,7 @@ import { useWebRTC } from "@/lib/webrtc";
 interface VideoChatProps {
   roomId: string;
   uid: string;
+  userEmail?: string;
   isInitiator: boolean;
   onDisconnect: () => void;
   onNext: () => void;
@@ -25,6 +26,7 @@ interface VideoChatProps {
 export default function VideoChat({
   roomId,
   uid,
+  userEmail,
   isInitiator,
   onDisconnect,
   onNext,
@@ -127,24 +129,24 @@ export default function VideoChat({
   }
 
   // ========================
-  // Connecting State
-  // ========================
-
-  if (connectionState === "new" || connectionState === "connecting" || !partnerUid) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-4 py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-foreground/20 border-t-foreground" />
-        <p className="text-foreground/60">Establishing peer connection...</p>
-      </div>
-    );
-  }
-
-  // ========================
   // Active Video Chat
+  //
+  // Video elements are ALWAYS rendered so that refs are valid
+  // when streams become available. A connecting overlay is shown
+  // on top while the peer connection is being established.
   // ========================
+
+  const isConnecting = connectionState === "new" || connectionState === "connecting" || !partnerUid;
 
   return (
     <div className="flex flex-col gap-4">
+      {/* User email */}
+      {userEmail && (
+        <div className="text-center text-sm text-foreground/60">
+          Signed in as <span className="font-medium text-foreground">{userEmail}</span>
+        </div>
+      )}
+
       {/* Video Container */}
       <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
         {/* Remote Video (full size) */}
@@ -155,17 +157,27 @@ export default function VideoChat({
           className="h-full w-full object-cover"
         />
 
+        {/* Connecting overlay */}
+        {isConnecting && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+            <p className="text-white/60">Establishing peer connection...</p>
+          </div>
+        )}
+
         {/* Connection status indicator */}
-        <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-          <div
-            className={`h-2 w-2 rounded-full ${
-              partnerOnline ? "bg-green-400" : "bg-red-400"
-            }`}
-          />
-          <span className="text-xs text-white">
-            {partnerOnline ? "Connected" : "Partner offline"}
-          </span>
-        </div>
+        {!isConnecting && (
+          <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
+            <div
+              className={`h-2 w-2 rounded-full ${
+                partnerOnline ? "bg-green-400" : "bg-red-400"
+              }`}
+            />
+            <span className="text-xs text-white">
+              {partnerOnline ? "Connected" : "Partner offline"}
+            </span>
+          </div>
+        )}
 
         {/* Local Video (picture-in-picture) */}
         <div className="absolute bottom-4 right-4 w-1/4 max-w-[200px] overflow-hidden rounded-xl border-2 border-white/20 shadow-lg">

@@ -12,14 +12,11 @@ export default function VerifyEmailPage() {
   const [resent, setResent] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
-  // Redirect if not logged in (wait for auth to finish loading first)
+  // Redirect if not logged in
   useEffect(() => {
-    if (loading) return;
-    // Small delay to allow onAuthStateChanged to fire after sign-up redirect
-    const timeout = setTimeout(() => {
-      if (!user) router.replace("/sign-in");
-    }, 1000);
-    return () => clearTimeout(timeout);
+    if (!loading && !user) {
+      router.replace("/sign-in");
+    }
   }, [user, loading, router]);
 
   // Redirect if already verified

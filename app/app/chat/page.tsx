@@ -199,6 +199,7 @@ function ChatContent() {
             <VideoChat
               roomId={activeRoomId}
               uid={uid}
+              userEmail={user?.email || undefined}
               isInitiator={isInitiator}
               onDisconnect={handleDisconnect}
               onNext={handleNext}

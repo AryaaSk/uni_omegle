@@ -6,12 +6,6 @@ export interface QueueEntry {
   joinedAt: number;
 }
 
-export interface Lock {
-  claimed: boolean;
-  by: string | null;
-  claimedAt: number | null;
-}
-
 export interface RoomPresence {
   heartbeat: number;
 }
