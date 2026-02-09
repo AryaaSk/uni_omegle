@@ -18,7 +18,6 @@ interface VideoChatProps {
   roomId: string;
   uid: string;
   userEmail?: string;
-  isInitiator: boolean;
   onDisconnect: () => void;
   onNext: () => void;
 }
@@ -27,7 +26,6 @@ export default function VideoChat({
   roomId,
   uid,
   userEmail,
-  isInitiator,
   onDisconnect,
   onNext,
 }: VideoChatProps) {
@@ -35,7 +33,7 @@ export default function VideoChat({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
   // Room management: heartbeats, partner presence, termination
-  const { partnerUid, partnerEmail, partnerOnline, terminated, terminate } = useRoom(roomId, uid, userEmail);
+  const { partnerUid, partnerEmail, partnerOnline, terminated, terminate, isInitiator } = useRoom(roomId, uid, userEmail);
 
   // WebRTC: media streams + peer connection (signaling via RTDB)
   const handleIceFailure = useCallback(() => {

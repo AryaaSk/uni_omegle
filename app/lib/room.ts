@@ -39,7 +39,8 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
   const [terminated, setTerminated] = useState(false);
 
   // Track the partner's last known heartbeat for staleness checks
-  const partnerHeartbeatRef = useRef<number>(Date.now());
+  const partnerHeartbeatRef = useRef<number>(0);
+  const partnerEverHeartbeatRef = useRef<boolean>(false);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stalenessIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const deletionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,6 +50,10 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
   // Derive partner UID from room data
   const partnerUid =
     room && uid ? room.users.find((u) => u !== uid) ?? null : null;
+
+  // Deterministic initiator: users array is sorted, so both clients
+  // always agree on who is users[0] without any race condition.
+  const isInitiator = room && uid ? uid === room.users[0] : false;
 
   // ========================
   // Terminate Room (Two-Phase)
@@ -66,6 +71,12 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
       if (!roomId || terminatedRef.current) return;
       terminatedRef.current = true;
       setTerminated(true);
+
+      // Stop staleness check immediately
+      if (stalenessIntervalRef.current) {
+        clearInterval(stalenessIntervalRef.current);
+        stalenessIntervalRef.current = null;
+      }
 
       const roomRef = ref(getFirebaseDb(), `rooms/${roomId}`);
 
@@ -185,16 +196,21 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
 
     // Listen for heartbeat value changes
     const unsub = onValue(partnerPath, (snapshot) => {
+      if (terminatedRef.current) return;
       const val = snapshot.val() as number | null;
       if (val && val > 0) {
         partnerHeartbeatRef.current = val;
+        partnerEverHeartbeatRef.current = true;
         setPartnerOnline(true);
       }
     });
 
-    // Periodically check if the heartbeat has gone stale
+    // Periodically check if the heartbeat has gone stale.
+    // Only check after partner has sent at least one heartbeat —
+    // before that, the partner join timeout handles it.
     stalenessIntervalRef.current = setInterval(() => {
       if (terminatedRef.current) return;
+      if (!partnerEverHeartbeatRef.current) return;
 
       const staleness = Date.now() - partnerHeartbeatRef.current;
       if (staleness > PEER_INACTIVE_THRESHOLD_MS) {
@@ -225,7 +241,7 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
 
     partnerJoinTimeoutRef.current = setTimeout(() => {
       // Check if partner ever wrote a real heartbeat
-      if (partnerHeartbeatRef.current <= 0) {
+      if (!partnerEverHeartbeatRef.current) {
         terminate("heartbeat");
       }
     }, PARTNER_JOIN_TIMEOUT_MS);
@@ -281,5 +297,6 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
     partnerOnline,
     terminated,
     terminate,
+    isInitiator,
   };
 }

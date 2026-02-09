@@ -13,7 +13,6 @@ export interface RoomPresence {
 
 export interface Room {
   users: [string, string];
-  owner: string;
   status: "active" | "terminating";
   createdAt: number;
   terminatedBy?: string;

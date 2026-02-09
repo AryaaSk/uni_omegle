@@ -3,12 +3,12 @@
 import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useMatchmaking } from "@/lib/matchmaking";
-import { ref, get, remove, update, serverTimestamp } from "firebase/database";
+import { ref, get, remove } from "firebase/database";
 import { getFirebaseDb } from "@/lib/firebase";
 import AuthGuard from "@/components/AuthGuard";
 import VideoChat from "@/components/VideoChat";
 import Navbar from "@/components/Navbar";
-import type { ChatState, Room } from "@/lib/types";
+import type { ChatState } from "@/lib/types";
 
 // ========================
 // Chat Page
@@ -27,86 +27,41 @@ function ChatContent() {
 
   const [chatState, setChatState] = useState<ChatState>("idle");
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
-  const [isInitiator, setIsInitiator] = useState(false);
 
   const { status, roomId, error, startSearching, stopSearching } =
     useMatchmaking(uid);
 
   // ========================
-  // Check for existing room on page load (handles refresh)
+  // Clean up stale match on page load
   //
-  // If matches/{uid} has a roomId, check if that room is still active.
-  // If so, rejoin it. If not, clean up the stale match notification.
+  // If matches/{uid} exists from a previous session, remove it so
+  // the user starts fresh. The room's heartbeat system will handle
+  // termination on its own.
   // ========================
 
   useEffect(() => {
     if (!uid || chatState !== "idle") return;
 
-    get(ref(getFirebaseDb(), `matches/${uid}`)).then(async (snapshot) => {
-      const existingRoomId = snapshot.val() as string | null;
-      if (!existingRoomId) return;
-
-      const roomSnapshot = await get(ref(getFirebaseDb(), `rooms/${existingRoomId}`));
-      const room = roomSnapshot.val() as Room | null;
-
-      if (!room || room.status !== "active") {
-        // Room no longer exists or is terminating — clean up
+    get(ref(getFirebaseDb(), `matches/${uid}`)).then(async (snap) => {
+      if (snap.val()) {
         await remove(ref(getFirebaseDb(), `matches/${uid}`));
-        return;
       }
-
-      // Check both heartbeats — if either is stale (>5s old), room is dead
-      const now = Date.now();
-      const heartbeats = room.presence ? Object.values(room.presence) : [];
-      const isStale = heartbeats.some(
-        (p) => !p.heartbeat || now - p.heartbeat > 5000
-      );
-
-      if (isStale) {
-        // Room is stale — trigger two-phase termination
-        await update(ref(getFirebaseDb(), `rooms/${existingRoomId}`), {
-          status: "terminating",
-          terminatedBy: uid,
-          terminatedAt: serverTimestamp(),
-        });
-        // Schedule final deletion after grace period
-        setTimeout(async () => {
-          const check = await get(ref(getFirebaseDb(), `rooms/${existingRoomId}`));
-          if (check.exists() && check.val().status === "terminating") {
-            await remove(ref(getFirebaseDb(), `rooms/${existingRoomId}`));
-          }
-        }, 10_000);
-        await remove(ref(getFirebaseDb(), `matches/${uid}`));
-        return;
-      }
-
-      // Room is active and heartbeats are fresh — rejoin
-      setActiveRoomId(existingRoomId);
-      setIsInitiator(room.owner === uid);
-      setChatState("connected");
     });
   }, [uid, chatState]);
 
   // ========================
   // React to matchmaking state changes
   //
-  // When matchmaking finds a room, we transition to "connected"
-  // and look up the room to determine our role (initiator or not).
+  // When matchmaking finds a room, transition directly to "connected".
+  // The initiator role is determined inside useRoom (deterministic).
   // ========================
 
   useEffect(() => {
-    if (status === "matched" && roomId && uid) {
+    if (status === "matched" && roomId) {
       setActiveRoomId(roomId);
-
-      get(ref(getFirebaseDb(), `rooms/${roomId}`)).then((snapshot) => {
-        const room = snapshot.val() as Room | null;
-        if (room) {
-          setIsInitiator(room.owner === uid);
-          setChatState("connected");
-        }
-      });
+      setChatState("connected");
     }
-  }, [status, roomId, uid]);
+  }, [status, roomId]);
 
   // ========================
   // User Actions
@@ -127,7 +82,6 @@ function ChatContent() {
   const handleDisconnect = useCallback(() => {
     if (uid) remove(ref(getFirebaseDb(), `matches/${uid}`)).catch(() => {});
     setActiveRoomId(null);
-    setIsInitiator(false);
     setChatState("idle");
   }, [uid]);
 
@@ -136,7 +90,6 @@ function ChatContent() {
     if (!user?.emailVerified) return;
     if (uid) remove(ref(getFirebaseDb(), `matches/${uid}`)).catch(() => {});
     setActiveRoomId(null);
-    setIsInitiator(false);
     setChatState("searching");
     startSearching();
   }, [user, uid, startSearching]);
@@ -202,7 +155,6 @@ function ChatContent() {
               roomId={activeRoomId}
               uid={uid}
               userEmail={user?.email || undefined}
-              isInitiator={isInitiator}
               onDisconnect={handleDisconnect}
               onNext={handleNext}
             />

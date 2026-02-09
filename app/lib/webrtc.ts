@@ -5,6 +5,7 @@ import {
   ref,
   set,
   push,
+  remove,
   onValue,
   onChildAdded,
   off,
@@ -193,7 +194,7 @@ export function useWebRTC({
         pc.onconnectionstatechange = () => {
           const state = pc.connectionState;
           setConnectionState(state);
-          if (state === "failed" || state === "disconnected") {
+          if (state === "failed") {
             onIceFailure();
           }
         };
@@ -224,10 +225,23 @@ export function useWebRTC({
         });
 
         // 8. SDP exchange via RTDB — depends on role
+        //
+        // React strict mode (dev) double-mounts components, which can
+        // leave stale signaling data in RTDB. To handle this:
+        // - Initiator: clears signaling before writing a fresh offer
+        // - Non-initiator: accepts re-offers gracefully (no signalingState guard)
+        // - Both: isCancelled checks prevent stale writes from abandoned setups
         if (isInitiator) {
-          // Initiator: create offer, write to RTDB, then listen for answer
+          // Clear stale signaling data from any previous setup
+          await remove(ref(getFirebaseDb(), signalingBase));
+          if (isCancelled) return;
+
           const offer = await pc.createOffer();
+          if (isCancelled) return;
+
           await pc.setLocalDescription(offer);
+          if (isCancelled) return;
+
           await set(offerRef, {
             type: pc.localDescription!.type,
             sdp: pc.localDescription!.sdp,
@@ -236,28 +250,39 @@ export function useWebRTC({
           // Listen for the answer from the non-initiator
           onValue(answerRef, async (snapshot) => {
             const answer = snapshot.val();
-            if (answer && pc.signalingState === "have-local-offer") {
-              await pc.setRemoteDescription(
-                new RTCSessionDescription(answer)
-              );
-              await flushCandidates();
+            if (!answer || isCancelled) return;
+            try {
+              if (pc.signalingState === "have-local-offer") {
+                await pc.setRemoteDescription(
+                  new RTCSessionDescription(answer)
+                );
+                await flushCandidates();
+              }
+            } catch (err) {
+              console.warn("Failed to set remote answer:", err);
             }
           });
         } else {
           // Non-initiator: listen for offer, then create and write answer
+          // No signalingState guard — handles re-offers from strict mode remounts
           onValue(offerRef, async (snapshot) => {
             const offer = snapshot.val();
-            if (offer && pc.signalingState === "stable") {
+            if (!offer || isCancelled) return;
+            try {
               await pc.setRemoteDescription(
                 new RTCSessionDescription(offer)
               );
               await flushCandidates();
               const answer = await pc.createAnswer();
+              if (isCancelled) return;
               await pc.setLocalDescription(answer);
+              if (isCancelled) return;
               await set(answerRef, {
                 type: pc.localDescription!.type,
                 sdp: pc.localDescription!.sdp,
               });
+            } catch (err) {
+              console.warn("Failed to process offer:", err);
             }
           });
         }
