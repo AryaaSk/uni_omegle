@@ -33,7 +33,7 @@ const PARTNER_JOIN_TIMEOUT_MS = 30_000; // If partner never starts heartbeat, re
 // 5. Handles beforeunload for best-effort cleanup on tab close
 // ========================
 
-export function useRoom(roomId: string | null, uid: string | undefined) {
+export function useRoom(roomId: string | null, uid: string | undefined, userEmail?: string) {
   const [room, setRoom] = useState<Room | null>(null);
   const [partnerOnline, setPartnerOnline] = useState(true);
   const [terminated, setTerminated] = useState(false);
@@ -140,14 +140,16 @@ export function useRoom(roomId: string | null, uid: string | undefined) {
   useEffect(() => {
     if (!roomId || !uid || terminatedRef.current) return;
 
-    const heartbeatPath = ref(getFirebaseDb(), `rooms/${roomId}/presence/${uid}/heartbeat`);
+    const presencePath = ref(getFirebaseDb(), `rooms/${roomId}/presence/${uid}`);
 
-    // Write initial heartbeat immediately
-    set(heartbeatPath, serverTimestamp()).catch(() => {});
+    // Write initial heartbeat + email immediately
+    const presenceData: Record<string, unknown> = { heartbeat: serverTimestamp() };
+    if (userEmail) presenceData.email = userEmail;
+    update(presencePath, presenceData).catch(() => {});
 
     heartbeatIntervalRef.current = setInterval(() => {
       if (terminatedRef.current) return;
-      set(heartbeatPath, serverTimestamp()).catch(() => {});
+      set(ref(getFirebaseDb(), `rooms/${roomId}/presence/${uid}/heartbeat`), serverTimestamp()).catch(() => {});
     }, HEARTBEAT_INTERVAL_MS);
 
     return () => {
@@ -156,7 +158,7 @@ export function useRoom(roomId: string | null, uid: string | undefined) {
         heartbeatIntervalRef.current = null;
       }
     };
-  }, [roomId, uid]);
+  }, [roomId, uid, userEmail]);
 
   // ========================
   // Partner Heartbeat Monitoring
@@ -266,9 +268,13 @@ export function useRoom(roomId: string | null, uid: string | undefined) {
     };
   }, []);
 
+  // Derive partner's email from room presence data
+  const partnerEmail = partnerUid && room?.presence?.[partnerUid]?.email || null;
+
   return {
     room,
     partnerUid,
+    partnerEmail,
     partnerOnline,
     terminated,
     terminate,

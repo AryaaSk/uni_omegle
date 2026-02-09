@@ -113,9 +113,10 @@ function ChatContent() {
   // ========================
 
   const handleStartChat = useCallback(() => {
+    if (!user?.emailVerified) return;
     setChatState("searching");
     startSearching();
-  }, [startSearching]);
+  }, [user, startSearching]);
 
   const handleCancelSearch = useCallback(() => {
     stopSearching();
@@ -132,12 +133,13 @@ function ChatContent() {
 
   // "Next" — terminate current room and immediately re-queue
   const handleNext = useCallback(() => {
+    if (!user?.emailVerified) return;
     if (uid) remove(ref(getFirebaseDb(), `matches/${uid}`)).catch(() => {});
     setActiveRoomId(null);
     setIsInitiator(false);
     setChatState("searching");
     startSearching();
-  }, [uid, startSearching]);
+  }, [user, uid, startSearching]);
 
   // ========================
   // Render based on state
@@ -148,7 +150,7 @@ function ChatContent() {
       <Navbar />
 
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
-        <div className="w-full max-w-3xl">
+        <div className="w-full max-w-5xl">
           {/* IDLE STATE */}
           {chatState === "idle" && (
             <div className="flex flex-col items-center gap-6 py-20">

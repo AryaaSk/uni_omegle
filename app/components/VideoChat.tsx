@@ -35,7 +35,7 @@ export default function VideoChat({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
   // Room management: heartbeats, partner presence, termination
-  const { partnerUid, partnerOnline, terminated, terminate } = useRoom(roomId, uid);
+  const { partnerUid, partnerEmail, partnerOnline, terminated, terminate } = useRoom(roomId, uid, userEmail);
 
   // WebRTC: media streams + peer connection (signaling via RTDB)
   const handleIceFailure = useCallback(() => {
@@ -140,54 +140,52 @@ export default function VideoChat({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* User email */}
-      {userEmail && (
-        <div className="text-center text-sm text-foreground/60">
-          Signed in as <span className="font-medium text-foreground">{userEmail}</span>
-        </div>
-      )}
-
-      {/* Video Container */}
-      <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
-        {/* Remote Video (full size) */}
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          className="h-full w-full object-cover"
-        />
-
-        {/* Connecting overlay */}
-        {isConnecting && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
-            <p className="text-white/60">Establishing peer connection...</p>
+      {/* Video Panels — side by side on md+, stacked on mobile */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Local Video Panel */}
+        <div className="flex flex-col gap-2">
+          <div className="text-sm font-medium text-foreground/80 truncate">
+            {userEmail || "You"}
           </div>
-        )}
-
-        {/* Connection status indicator */}
-        {!isConnecting && (
-          <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full bg-black/50 px-3 py-1.5 backdrop-blur-sm">
-            <div
-              className={`h-2 w-2 rounded-full ${
-                partnerOnline ? "bg-green-400" : "bg-red-400"
-              }`}
+          <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className="h-full w-full object-cover"
             />
-            <span className="text-xs text-white">
-              {partnerOnline ? "Connected" : "Partner offline"}
-            </span>
           </div>
-        )}
+        </div>
 
-        {/* Local Video (picture-in-picture) */}
-        <div className="absolute bottom-4 right-4 w-1/4 max-w-[200px] overflow-hidden rounded-xl border-2 border-white/20 shadow-lg">
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className="aspect-video w-full object-cover"
-          />
+        {/* Remote Video Panel */}
+        <div className="flex flex-col gap-2">
+          <div className="text-sm font-medium text-foreground/80 truncate flex items-center gap-2">
+            <span>{partnerEmail || "Partner"}</span>
+            {!isConnecting && (
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  partnerOnline ? "bg-green-400" : "bg-red-400"
+                }`}
+              />
+            )}
+          </div>
+          <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className="h-full w-full object-cover"
+            />
+
+            {/* Connecting overlay */}
+            {isConnecting && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
+                <p className="text-white/60">Connecting...</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

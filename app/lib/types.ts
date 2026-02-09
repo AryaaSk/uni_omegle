@@ -8,6 +8,7 @@ export interface QueueEntry {
 
 export interface RoomPresence {
   heartbeat: number;
+  email?: string;
 }
 
 export interface Room {
