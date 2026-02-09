@@ -140,16 +140,19 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
   useEffect(() => {
     if (!roomId || !uid || terminatedRef.current) return;
 
-    const presencePath = ref(getFirebaseDb(), `rooms/${roomId}/presence/${uid}`);
+    const heartbeatPath = ref(getFirebaseDb(), `rooms/${roomId}/presence/${uid}/heartbeat`);
 
-    // Write initial heartbeat + email immediately
-    const presenceData: Record<string, unknown> = { heartbeat: serverTimestamp() };
-    if (userEmail) presenceData.email = userEmail;
-    update(presencePath, presenceData).catch(() => {});
+    // Write initial heartbeat immediately (same as before — set on heartbeat path)
+    set(heartbeatPath, serverTimestamp()).catch(() => {});
+
+    // Write email to presence separately (best effort — doesn't affect heartbeat)
+    if (userEmail) {
+      set(ref(getFirebaseDb(), `rooms/${roomId}/presence/${uid}/email`), userEmail).catch(() => {});
+    }
 
     heartbeatIntervalRef.current = setInterval(() => {
       if (terminatedRef.current) return;
-      set(ref(getFirebaseDb(), `rooms/${roomId}/presence/${uid}/heartbeat`), serverTimestamp()).catch(() => {});
+      set(heartbeatPath, serverTimestamp()).catch(() => {});
     }, HEARTBEAT_INTERVAL_MS);
 
     return () => {
