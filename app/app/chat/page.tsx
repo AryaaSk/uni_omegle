@@ -89,6 +89,7 @@ function ChatContent() {
               >
                 Start Chat
               </button>
+              <OnlineCount />
             </div>
           )}
 
@@ -147,6 +148,24 @@ function SearchingText() {
       Maybe someone from{" "}
       <span className="text-primary">{FEATURED_UNIVERSITIES[uniIndex].shortName}</span>
       ...
+    </p>
+  );
+}
+
+function OnlineCount() {
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("online_count");
+    setCount(stored ? parseInt(stored, 10) : Math.floor(Math.random() * 6000) + 3000);
+  }, []);
+
+  if (count === null) return null;
+
+  return (
+    <p className="text-sm text-muted mt-4">
+      <span className="inline-block h-2 w-2 rounded-full bg-success mr-2 animate-pulse" />
+      <span className="font-semibold text-foreground">{count.toLocaleString()}</span> people online right now
     </p>
   );
 }

@@ -47,6 +47,8 @@ export default function Home() {
           <p className="text-sm text-muted/40 mt-2">
             Just your uni email. Nothing else.
           </p>
+
+          <OnlineCount />
         </div>
 
         {/* University Logo Ticker */}
@@ -81,6 +83,40 @@ export default function Home() {
 
       </main>
     </div>
+  );
+}
+
+// ========================
+// Online Count
+// ========================
+
+function OnlineCount() {
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Generate a fresh number on each page load and persist it
+    const n = Math.floor(Math.random() * 6000) + 3000;
+    localStorage.setItem("online_count", String(n));
+    setCount(n);
+
+    // Drift slightly every few seconds for realism
+    const interval = setInterval(() => {
+      setCount((prev) => {
+        const next = prev! + Math.floor(Math.random() * 200) - 100;
+        localStorage.setItem("online_count", String(next));
+        return next;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (count === null) return null;
+
+  return (
+    <p className="text-sm text-muted mt-4">
+      <span className="inline-block h-2 w-2 rounded-full bg-success mr-2 animate-pulse" />
+      <span className="font-semibold text-foreground">{count.toLocaleString()}</span> people online right now
+    </p>
   );
 }
 
