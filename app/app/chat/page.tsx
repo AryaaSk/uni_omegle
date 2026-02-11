@@ -17,6 +17,7 @@ function ChatContent() {
 
   const [chatState, setChatState] = useState<"idle" | "searching" | "connected">("idle");
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [mediaError, setMediaError] = useState<string | null>(null);
 
   const { isSearching, startSearching, stopSearching } = useMatchmaking(uid, user?.email || undefined);
 
@@ -35,8 +36,26 @@ function ChatContent() {
     }
   }, [currentRoomId, chatState, activeRoomId]);
 
-  const handleStartChat = useCallback(() => {
+  const handleStartChat = useCallback(async () => {
     if (!user?.emailVerified) return;
+    setMediaError(null);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      // Stop the test stream immediately — WebRTC will acquire its own later
+      stream.getTracks().forEach((t) => t.stop());
+    } catch (err: unknown) {
+      const name = err instanceof DOMException ? err.name : "";
+      if (name === "NotAllowedError") {
+        setMediaError("Camera and microphone access is required. Please allow permissions in your browser settings and try again.");
+      } else if (name === "NotFoundError") {
+        setMediaError("No camera or microphone found. Please connect a device and try again.");
+      } else {
+        setMediaError("Could not access camera/microphone. Please check your device and browser settings.");
+      }
+      return;
+    }
+
     setChatState("searching");
     startSearching();
   }, [user, startSearching]);
@@ -82,6 +101,11 @@ function ChatContent() {
                 <p className="text-sm text-muted/60">
                   Chatting as <span className="text-primary font-medium">{uniName}</span>
                 </p>
+              )}
+              {mediaError && (
+                <div className="rounded-xl border border-danger/30 bg-danger/10 px-6 py-4 text-sm text-danger max-w-md text-center">
+                  {mediaError}
+                </div>
               )}
               <button
                 onClick={handleStartChat}

@@ -9,6 +9,46 @@ import { getFirebaseDb } from "@/lib/firebase";
 import { ref, push } from "firebase/database";
 import Image from "next/image";
 
+function getDisconnectInfo(reason: string | null) {
+  switch (reason) {
+    case "partner_left":
+      return {
+        title: "Partner Disconnected",
+        description: "Your partner has left the chat.",
+        isError: false,
+        detail: "",
+      };
+    case "partner_inactive":
+      return {
+        title: "Connection Lost",
+        description: "The chat has ended unexpectedly.",
+        isError: true,
+        detail: "Your partner\u2019s connection dropped. This usually means they closed the tab or lost internet.",
+      };
+    case "partner_timeout":
+      return {
+        title: "Partner Didn\u2019t Connect",
+        description: "The chat could not be established.",
+        isError: true,
+        detail: "Your partner was matched but never connected. They may have closed the page before the chat started.",
+      };
+    case "connection_failed":
+      return {
+        title: "Connection Failed",
+        description: "The video connection could not be established.",
+        isError: true,
+        detail: "This is usually caused by a firewall or network restriction blocking the video connection. Try switching to a different network.",
+      };
+    default:
+      return {
+        title: "Chat Ended",
+        description: "The chat has ended.",
+        isError: false,
+        detail: "",
+      };
+  }
+}
+
 interface VideoChatProps {
   roomId: string;
   uid: string;
@@ -27,7 +67,7 @@ export default function VideoChat({
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-  const { partnerUid, partnerEmail, terminated, leaveRoom, skipToNext, nextPartnerAvailable, isInitiator } = useRoom(roomId, uid, userEmail);
+  const { partnerUid, partnerEmail, terminated, disconnectReason, leaveRoom, skipToNext, nextPartnerAvailable, isInitiator } = useRoom(roomId, uid, userEmail);
 
   const handleIceFailure = useCallback(() => {
     const db = getFirebaseDb();
@@ -37,7 +77,7 @@ export default function VideoChat({
       uid,
       timestamp: Date.now(),
     });
-    leaveRoom();
+    leaveRoom("connection_failed");
   }, [leaveRoom, roomId, uid]);
 
   const {
@@ -123,12 +163,18 @@ export default function VideoChat({
   // ========================
 
   if (terminated) {
+    const reasonInfo = getDisconnectInfo(disconnectReason);
     return (
       <div className="flex flex-col items-center justify-center gap-6 py-20">
         <div className="text-center">
-          <h2 className="text-2xl font-bold">Partner Disconnected</h2>
-          <p className="mt-2 text-muted">The chat has ended.</p>
+          <h2 className="text-2xl font-bold">{reasonInfo.title}</h2>
+          <p className="mt-2 text-muted">{reasonInfo.description}</p>
         </div>
+        {reasonInfo.isError && (
+          <div className="rounded-xl border border-danger/30 bg-danger/10 px-6 py-3 text-sm text-danger max-w-md text-center">
+            {reasonInfo.detail}
+          </div>
+        )}
         <div className="flex gap-3">
           <button
             onClick={onDisconnect}

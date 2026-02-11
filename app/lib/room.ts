@@ -29,6 +29,7 @@ const PARTNER_JOIN_TIMEOUT_MS = 30_000;
 export function useRoom(roomId: string | null, uid: string | undefined, userEmail?: string) {
   const [room, setRoom] = useState<Room | null>(null);
   const [terminated, setTerminated] = useState(false);
+  const [disconnectReason, setDisconnectReason] = useState<string | null>(null);
   const [nextPartnerAvailable, setNextPartnerAvailable] = useState(false);
 
   const partnerHeartbeatRef = useRef<number>(0);
@@ -70,10 +71,11 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
   // ========================
 
   const leaveRoom = useCallback(
-    async () => {
+    async (reason?: string) => {
       if (!roomId || !uid || terminatedRef.current) return;
       terminatedRef.current = true;
       setTerminated(true);
+      if (reason) setDisconnectReason(reason);
 
       log(`Leaving room ${roomId}`);
 
@@ -184,6 +186,7 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
         log("Room deleted by partner");
         terminatedRef.current = true;
         setTerminated(true);
+        setDisconnectReason("partner_left");
       }
     });
 
@@ -257,7 +260,7 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
           uid,
           timestamp: Date.now(),
         });
-        leaveRoom();
+        leaveRoom("partner_inactive");
       }
     }, HEARTBEAT_INTERVAL_MS);
 
@@ -286,7 +289,7 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
           uid,
           timestamp: Date.now(),
         });
-        leaveRoom();
+        leaveRoom("partner_timeout");
       }
     }, PARTNER_JOIN_TIMEOUT_MS);
 
@@ -373,6 +376,7 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
     partnerUid,
     partnerEmail,
     terminated,
+    disconnectReason,
     leaveRoom,
     skipToNext,
     nextPartnerAvailable,
