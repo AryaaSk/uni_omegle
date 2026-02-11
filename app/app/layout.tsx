@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "UniChat",
-  description: "Random video chat for university students",
+  title: "uniomegle",
+  description: "Random video chat for UK university students | uniomegle.com",
 };
 
 export default function RootLayout({

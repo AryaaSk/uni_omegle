@@ -124,6 +124,42 @@ export function useWebRTC({
     setVideoEnabled((prev) => !prev);
   }, []);
 
+  // Switch to a different camera or microphone by deviceId
+  const switchDevice = useCallback(async (kind: "audioinput" | "videoinput", deviceId: string) => {
+    const constraints = kind === "videoinput"
+      ? { video: { deviceId: { exact: deviceId } } }
+      : { audio: { deviceId: { exact: deviceId } } };
+
+    const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const newTrack = newStream.getTracks()[0];
+    if (!newTrack) return;
+
+    const stream = localStreamRef.current;
+    const pc = pcRef.current;
+    if (!stream) return;
+
+    // Replace the track in the local stream
+    const oldTrack = kind === "videoinput"
+      ? stream.getVideoTracks()[0]
+      : stream.getAudioTracks()[0];
+
+    if (oldTrack) {
+      stream.removeTrack(oldTrack);
+      oldTrack.stop();
+    }
+    stream.addTrack(newTrack);
+    setLocalStream(new MediaStream(stream.getTracks()));
+
+    // Replace the track on the peer connection sender
+    if (pc) {
+      const senderKind = kind === "videoinput" ? "video" : "audio";
+      const sender = pc.getSenders().find((s) => s.track?.kind === senderKind);
+      if (sender) {
+        await sender.replaceTrack(newTrack);
+      }
+    }
+  }, []);
+
   // ========================
   // Main WebRTC Setup
   //
@@ -321,6 +357,7 @@ export function useWebRTC({
     videoEnabled,
     toggleAudio,
     toggleVideo,
+    switchDevice,
     close,
   };
 }

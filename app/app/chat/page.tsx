@@ -1,21 +1,14 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth";
 import { useCurrentRoom } from "@/lib/currentRoom";
 import { useMatchmaking } from "@/lib/matchmaking";
+import { getUniversityName } from "@/lib/universities";
+import { FEATURED_UNIVERSITIES } from "@/lib/universities";
 import AuthGuard from "@/components/AuthGuard";
 import VideoChat from "@/components/VideoChat";
 import Navbar from "@/components/Navbar";
-
-// ========================
-// Chat Page
-//
-// State machine: IDLE → SEARCHING → CONNECTED
-//
-// Connected state is driven by the global currentRoomId
-// from CurrentRoomProvider (users/{uid}/currentRoom listener).
-// ========================
 
 function ChatContent() {
   const { user } = useAuth();
@@ -27,8 +20,9 @@ function ChatContent() {
 
   const { isSearching, startSearching, stopSearching } = useMatchmaking(uid, user?.email || undefined);
 
+  const uniName = user?.email ? getUniversityName(user.email) : null;
+
   // Sync local state with global currentRoomId
-  // Handles: null→room (matched), room→room (skipToNext via provider), room→null (partner left)
   useEffect(() => {
     if (currentRoomId) {
       if (chatState !== "connected" || activeRoomId !== currentRoomId) {
@@ -40,10 +34,6 @@ function ChatContent() {
       setChatState("idle");
     }
   }, [currentRoomId, chatState, activeRoomId]);
-
-  // ========================
-  // User Actions
-  // ========================
 
   const handleStartChat = useCallback(() => {
     if (!user?.emailVerified) return;
@@ -63,20 +53,14 @@ function ChatContent() {
 
   const handleNext = useCallback((newRoomId?: string) => {
     if (newRoomId) {
-      // Atomic skip — new room already created by skipToNext()
       setActiveRoomId(newRoomId);
       setChatState("connected");
     } else {
-      // No next partner — go to searching
       setActiveRoomId(null);
       setChatState("searching");
       startSearching();
     }
   }, [startSearching]);
-
-  // ========================
-  // Render
-  // ========================
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -88,15 +72,20 @@ function ChatContent() {
           {chatState === "idle" && (
             <div className="flex flex-col items-center gap-6 py-20">
               <h1 className="text-4xl font-bold text-center">
-                Random Video Chat
+                Ready to chat?
               </h1>
-              <p className="text-foreground/60 text-center max-w-md">
-                Connect with other university students for anonymous video
-                conversations. Your identity stays private.
+              <p className="text-muted text-center max-w-md">
+                Connect with another university student for an anonymous video
+                conversation.
               </p>
+              {uniName && (
+                <p className="text-sm text-muted/60">
+                  Chatting as <span className="text-primary font-medium">{uniName}</span>
+                </p>
+              )}
               <button
                 onClick={handleStartChat}
-                className="rounded-xl bg-foreground px-8 py-3.5 text-lg text-background font-medium hover:opacity-90 transition-opacity"
+                className="rounded-full bg-primary px-10 py-4 text-lg text-background font-semibold hover:bg-primary-dark transition-colors shadow-lg shadow-primary/25"
               >
                 Start Chat
               </button>
@@ -107,17 +96,15 @@ function ChatContent() {
           {chatState === "searching" && (
             <div className="flex flex-col items-center gap-6 py-20">
               <div className="relative">
-                <div className="h-16 w-16 animate-spin rounded-full border-4 border-foreground/10 border-t-foreground" />
+                <div className="h-16 w-16 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
               </div>
               <div className="text-center">
                 <h2 className="text-2xl font-bold">Looking for a partner...</h2>
-                <p className="mt-2 text-foreground/60">
-                  Waiting for another student to join
-                </p>
+                <SearchingText />
               </div>
               <button
                 onClick={handleCancelSearch}
-                className="rounded-lg border border-foreground/20 px-6 py-2.5 font-medium hover:bg-foreground/5 transition-colors"
+                className="rounded-lg border border-surface-border px-6 py-2.5 font-medium text-muted hover:bg-surface-light transition-colors"
               >
                 Cancel
               </button>
@@ -141,9 +128,28 @@ function ChatContent() {
   );
 }
 
-// ========================
-// Page Export (wrapped in AuthGuard)
-// ========================
+// Rotating search text that cycles through university names
+function SearchingText() {
+  const [uniIndex, setUniIndex] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    intervalRef.current = setInterval(() => {
+      setUniIndex((prev) => (prev + 1) % FEATURED_UNIVERSITIES.length);
+    }, 2000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  return (
+    <p className="mt-2 text-muted">
+      Maybe someone from{" "}
+      <span className="text-primary">{FEATURED_UNIVERSITIES[uniIndex].shortName}</span>
+      ...
+    </p>
+  );
+}
 
 export default function ChatPage() {
   return (

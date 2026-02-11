@@ -14,7 +14,6 @@ export default function SignInPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Redirect authenticated users away from sign-in
   useEffect(() => {
     if (loading) return;
     if (user?.emailVerified) {
@@ -47,7 +46,7 @@ export default function SignInPage() {
   if (loading || user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-foreground/20 border-t-foreground" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
       </div>
     );
   }
@@ -56,61 +55,66 @@ export default function SignInPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
+          <Link href="/" className="text-2xl font-bold inline-block mb-6">
+            uni<span className="text-primary">omegle</span>
+          </Link>
           <h1 className="text-3xl font-bold">Sign In</h1>
-          <p className="mt-2 text-foreground/60">
-            Welcome back to UniChat
+          <p className="mt-2 text-muted">
+            Welcome back
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-500">
-              {error}
+        <div className="rounded-2xl border border-surface-border bg-surface p-6 space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="rounded-lg bg-danger/10 px-4 py-3 text-sm text-danger">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium mb-1">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@university.ac.uk"
+                className="w-full rounded-lg border border-surface-border bg-surface-light px-4 py-2.5 text-foreground placeholder:text-muted/50 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none transition-colors"
+              />
             </div>
-          )}
 
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium mb-1">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@university.ac.uk"
-              className="w-full rounded-lg border border-foreground/20 bg-background px-4 py-2.5 text-foreground placeholder:text-foreground/40 focus:border-foreground/40 focus:outline-none"
-            />
-          </div>
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium mb-1">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Your password"
+                className="w-full rounded-lg border border-surface-border bg-surface-light px-4 py-2.5 text-foreground placeholder:text-muted/50 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none transition-colors"
+              />
+            </div>
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium mb-1">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Your password"
-              className="w-full rounded-lg border border-foreground/20 bg-background px-4 py-2.5 text-foreground placeholder:text-foreground/40 focus:border-foreground/40 focus:outline-none"
-            />
-          </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-lg bg-primary py-2.5 text-background font-medium hover:bg-primary-dark disabled:opacity-50 transition-colors"
+            >
+              {submitting ? "Signing in..." : "Sign In"}
+            </button>
+          </form>
+        </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-lg bg-foreground py-2.5 text-background font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-          >
-            {submitting ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-foreground/60">
+        <p className="text-center text-sm text-muted">
           Don&apos;t have an account?{" "}
-          <Link href="/sign-up" className="text-foreground underline">
+          <Link href="/sign-up" className="text-primary hover:underline">
             Sign up
           </Link>
         </p>

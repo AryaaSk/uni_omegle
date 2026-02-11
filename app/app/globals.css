@@ -1,26 +1,46 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0F0F14;
+  --foreground: #F5F5F5;
+  --surface: #1A1A23;
+  --surface-light: #20202B;
+  --surface-border: #2E2E38;
+  --primary: #38BDF8;
+  --primary-dark: #0EA5E9;
+  --accent: #FB7185;
+  --accent-warm: #F97316;
+  --highlight: #A78BFA;
+  --success: #22C55E;
+  --danger: #F87171;
+  --muted: #A1A1AA;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-light: var(--surface-light);
+  --color-surface-border: var(--surface-border);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-accent: var(--accent);
+  --color-accent-warm: var(--accent-warm);
+  --color-highlight: var(--highlight);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-muted: var(--muted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }

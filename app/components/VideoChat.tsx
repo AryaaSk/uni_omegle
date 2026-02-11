@@ -1,18 +1,10 @@
 "use client";
+//using https://www.expressturn.com/ for turn server
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useRoom } from "@/lib/room";
 import { useWebRTC } from "@/lib/webrtc";
-
-// ========================
-// VideoChat Component
-//
-// Orchestrates the full video chat experience for an active room:
-// 1. Establishes WebRTC peer connection (signaling via Firebase RTDB)
-// 2. Manages room heartbeats and partner presence
-// 3. Renders local + remote video streams
-// 4. Provides media controls, disconnect, and next
-// ========================
+import { getUniversityName } from "@/lib/universities";
 
 interface VideoChatProps {
   roomId: string;
@@ -32,10 +24,8 @@ export default function VideoChat({
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-  // Room management: heartbeats, partner presence, termination
   const { partnerUid, partnerEmail, terminated, leaveRoom, skipToNext, nextPartnerAvailable, isInitiator } = useRoom(roomId, uid, userEmail);
 
-  // WebRTC: media streams + peer connection (signaling via RTDB)
   const handleIceFailure = useCallback(() => {
     leaveRoom();
   }, [leaveRoom]);
@@ -48,6 +38,7 @@ export default function VideoChat({
     videoEnabled,
     toggleAudio,
     toggleVideo,
+    switchDevice,
     close: closeWebRTC,
   } = useWebRTC({
     roomId: partnerUid ? roomId : "",
@@ -57,28 +48,24 @@ export default function VideoChat({
     onIceFailure: handleIceFailure,
   });
 
-  // Attach local stream to video element
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
   }, [localStream]);
 
-  // Attach remote stream to video element
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
     }
   }, [remoteStream]);
 
-  // Close WebRTC when room terminates
   useEffect(() => {
     if (terminated) {
       closeWebRTC();
     }
   }, [terminated, closeWebRTC]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       closeWebRTC();
@@ -102,6 +89,9 @@ export default function VideoChat({
     }
   }
 
+  const userUniName = userEmail ? getUniversityName(userEmail) : null;
+  const partnerUniName = partnerEmail ? getUniversityName(partnerEmail) : null;
+
   // ========================
   // Disconnected State
   // ========================
@@ -111,24 +101,23 @@ export default function VideoChat({
       <div className="flex flex-col items-center justify-center gap-6 py-20">
         <div className="text-center">
           <h2 className="text-2xl font-bold">Partner Disconnected</h2>
-          <p className="mt-2 text-foreground/60">The chat has ended.</p>
+          <p className="mt-2 text-muted">The chat has ended.</p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={onDisconnect}
-            className="rounded-lg border border-foreground/20 px-6 py-2.5 font-medium hover:bg-foreground/5 transition-colors"
+            className="rounded-lg border border-surface-border px-6 py-2.5 font-medium text-muted hover:bg-surface-light transition-colors"
           >
             Back to Home
           </button>
           <button
-            onClick={() => {
-              onNext();
-            }}
-            className="rounded-lg bg-foreground px-6 py-2.5 text-background font-medium hover:opacity-90 transition-opacity"
+            onClick={() => onNext()}
+            className="rounded-lg bg-primary px-6 py-2.5 text-background font-medium hover:bg-primary-dark transition-colors"
           >
             Find New Partner
           </button>
         </div>
+        <p className="text-muted/30 text-xs select-none">uniomegle.com</p>
       </div>
     );
   }
@@ -140,109 +129,217 @@ export default function VideoChat({
   const isConnecting = connectionState === "new" || connectionState === "connecting" || !partnerUid;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Video Panels — side by side on md+, stacked on mobile */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Local Video Panel */}
-        <div className="flex flex-col gap-2">
-          <div className="text-sm font-medium text-foreground/80 truncate">
-            {userEmail || "You"}
-          </div>
-          <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="h-full w-full object-cover"
-            />
-          </div>
+    <div className="fixed inset-0 flex flex-col bg-background p-4 gap-4">
+      {/* Remote Video — top half */}
+      <div className="relative flex-1 min-h-0 rounded-2xl overflow-hidden">
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className="h-full w-full object-cover"
+        />
+        <div className="absolute top-3 left-3 z-10">
+          <UniBadge name={partnerUniName} fallback={partnerEmail || "Partner"} />
         </div>
 
-        {/* Remote Video Panel */}
-        <div className="flex flex-col gap-2">
-          <div className="text-sm font-medium text-foreground/80 truncate">
-            {partnerEmail || "Partner"}
+        {isConnecting && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+            <p className="text-muted">Connecting...</p>
           </div>
-          <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="h-full w-full object-cover"
-            />
+        )}
+      </div>
 
-            {/* Connecting overlay */}
-            {isConnecting && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-white" />
-                <p className="text-white/60">Connecting...</p>
-              </div>
-            )}
-          </div>
+      {/* Local Video — bottom half */}
+      <div className="relative flex-1 min-h-0 rounded-2xl overflow-hidden">
+        <video
+          ref={localVideoRef}
+          autoPlay
+          playsInline
+          muted
+          className="h-full w-full object-cover"
+        />
+        <div className="absolute top-3 left-3 z-10">
+          <UniBadge name={userUniName} fallback={userEmail || "You"} />
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="flex items-center justify-center gap-3">
-        <button
-          onClick={toggleAudio}
-          className={`rounded-full p-3 transition-colors ${
-            audioEnabled
-              ? "bg-foreground/10 hover:bg-foreground/20"
-              : "bg-red-500/20 text-red-500"
-          }`}
-          title={audioEnabled ? "Mute microphone" : "Unmute microphone"}
-        >
-          {audioEnabled ? (
-            <MicIcon className="h-5 w-5" />
-          ) : (
-            <MicOffIcon className="h-5 w-5" />
-          )}
-        </button>
+      {/* Controls — bottom */}
+      <div className="relative flex justify-center pb-2">
+        <div className="inline-flex items-center gap-3 rounded-2xl bg-surface/80 backdrop-blur-sm border border-surface-border px-6 py-3">
+          <button
+            onClick={toggleAudio}
+            className={`rounded-full p-3 transition-colors ${
+              audioEnabled
+                ? "bg-surface-light hover:bg-surface-border"
+                : "bg-danger/20 text-danger"
+            }`}
+            title={audioEnabled ? "Mute microphone" : "Unmute microphone"}
+          >
+            {audioEnabled ? (
+              <MicIcon className="h-5 w-5" />
+            ) : (
+              <MicOffIcon className="h-5 w-5" />
+            )}
+          </button>
 
-        <button
-          onClick={toggleVideo}
-          className={`rounded-full p-3 transition-colors ${
-            videoEnabled
-              ? "bg-foreground/10 hover:bg-foreground/20"
-              : "bg-red-500/20 text-red-500"
-          }`}
-          title={videoEnabled ? "Turn off camera" : "Turn on camera"}
-        >
-          {videoEnabled ? (
-            <VideoIcon className="h-5 w-5" />
-          ) : (
-            <VideoOffIcon className="h-5 w-5" />
-          )}
-        </button>
+          <button
+            onClick={toggleVideo}
+            className={`rounded-full p-3 transition-colors ${
+              videoEnabled
+                ? "bg-surface-light hover:bg-surface-border"
+                : "bg-danger/20 text-danger"
+            }`}
+            title={videoEnabled ? "Turn off camera" : "Turn on camera"}
+          >
+            {videoEnabled ? (
+              <VideoIcon className="h-5 w-5" />
+            ) : (
+              <VideoOffIcon className="h-5 w-5" />
+            )}
+          </button>
 
-        <button
-          onClick={handleEnd}
-          className="rounded-full bg-red-500 px-5 py-3 text-sm font-medium text-white hover:bg-red-600 transition-colors"
-        >
-          End Chat
-        </button>
+          <DeviceSettings switchDevice={switchDevice} />
 
-        <button
-          onClick={handleNext}
-          disabled={!nextPartnerAvailable}
-          className={`rounded-full px-5 py-3 text-sm font-medium transition-opacity ${
-            nextPartnerAvailable
-              ? "bg-foreground text-background hover:opacity-90"
-              : "bg-foreground/30 text-background/50 cursor-not-allowed"
-          }`}
-        >
-          Next
-        </button>
+          <button
+            onClick={handleEnd}
+            className="rounded-full bg-danger px-5 py-3 text-sm font-medium text-white hover:bg-danger/80 transition-colors"
+          >
+            End Chat
+          </button>
+
+          <button
+            onClick={handleNext}
+            disabled={!nextPartnerAvailable}
+            className={`rounded-full px-5 py-3 text-sm font-medium transition-all ${
+              nextPartnerAvailable
+                ? "bg-primary text-background hover:bg-primary-dark"
+                : "bg-surface-light text-muted/50 cursor-not-allowed"
+            }`}
+          >
+            Next
+          </button>
+
+          <span className="text-xs text-muted/30 select-none ml-2">uniomegle.com</span>
+        </div>
       </div>
     </div>
   );
 }
 
 // ========================
-// Simple SVG Icons (inline to avoid dependencies)
+// University Badge
 // ========================
+
+function UniBadge({ name, fallback }: { name: string | null; fallback: string }) {
+  if (name) {
+    return (
+      <span className="inline-flex items-center self-start rounded-full bg-primary/10 text-primary px-3 py-1 text-sm font-medium truncate">
+        {name}
+      </span>
+    );
+  }
+  return (
+    <span className="text-sm font-medium text-muted truncate">
+      {fallback}
+    </span>
+  );
+}
+
+// ========================
+// Device Settings Popover
+// ========================
+
+function DeviceSettings({ switchDevice }: { switchDevice: (kind: "audioinput" | "videoinput", deviceId: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const loadDevices = useCallback(async () => {
+    const all = await navigator.mediaDevices.enumerateDevices();
+    setDevices(all.filter((d) => d.kind === "audioinput" || d.kind === "videoinput"));
+  }, []);
+
+  useEffect(() => {
+    if (open) loadDevices();
+  }, [open, loadDevices]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const cameras = devices.filter((d) => d.kind === "videoinput");
+  const mics = devices.filter((d) => d.kind === "audioinput");
+
+  return (
+    <div className="relative" ref={popoverRef}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="rounded-full p-3 bg-surface-light hover:bg-surface-border transition-colors"
+        title="Device settings"
+      >
+        <GearIcon className="h-5 w-5" />
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-72 rounded-xl bg-surface border border-surface-border p-4 shadow-lg space-y-4 z-30">
+          {cameras.length > 0 && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted uppercase tracking-wide">Camera</label>
+              <select
+                onChange={(e) => switchDevice("videoinput", e.target.value)}
+                className="w-full rounded-lg border border-surface-border bg-surface-light px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+              >
+                {cameras.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label || `Camera ${cameras.indexOf(d) + 1}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {mics.length > 0 && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted uppercase tracking-wide">Microphone</label>
+              <select
+                onChange={(e) => switchDevice("audioinput", e.target.value)}
+                className="w-full rounded-lg border border-surface-border bg-surface-light px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+              >
+                {mics.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label || `Microphone ${mics.indexOf(d) + 1}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ========================
+// SVG Icons
+// ========================
+
+function GearIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
 
 function MicIcon({ className }: { className?: string }) {
   return (
