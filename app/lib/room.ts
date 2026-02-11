@@ -251,6 +251,12 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
       const staleness = Date.now() - partnerHeartbeatRef.current;
       if (staleness > PEER_INACTIVE_THRESHOLD_MS) {
         log(`Partner heartbeat stale (${Math.round(staleness / 1000)}s) — leaving room`);
+        push(ref(getFirebaseDb(), "errors"), {
+          type: "partner_heartbeat_stale",
+          roomId,
+          uid,
+          timestamp: Date.now(),
+        });
         leaveRoom();
       }
     }, HEARTBEAT_INTERVAL_MS);
@@ -274,6 +280,12 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
     partnerJoinTimeoutRef.current = setTimeout(() => {
       if (!partnerEverHeartbeatRef.current) {
         log("Partner never sent heartbeat — leaving room");
+        push(ref(getFirebaseDb(), "errors"), {
+          type: "partner_no_heartbeat",
+          roomId,
+          uid,
+          timestamp: Date.now(),
+        });
         leaveRoom();
       }
     }, PARTNER_JOIN_TIMEOUT_MS);
@@ -327,6 +339,12 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
     if (!roomId || !uid) return;
 
     const handleBeforeUnload = () => {
+      push(ref(getFirebaseDb(), "errors"), {
+        type: "tab_close",
+        roomId,
+        uid,
+        timestamp: Date.now(),
+      });
       leaveRoom();
     };
 

@@ -5,6 +5,8 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { useRoom } from "@/lib/room";
 import { useWebRTC } from "@/lib/webrtc";
 import { getUniversityName, getUniversityLogo } from "@/lib/universities";
+import { getFirebaseDb } from "@/lib/firebase";
+import { ref, push } from "firebase/database";
 import Image from "next/image";
 
 interface VideoChatProps {
@@ -28,8 +30,15 @@ export default function VideoChat({
   const { partnerUid, partnerEmail, terminated, leaveRoom, skipToNext, nextPartnerAvailable, isInitiator } = useRoom(roomId, uid, userEmail);
 
   const handleIceFailure = useCallback(() => {
+    const db = getFirebaseDb();
+    push(ref(db, "errors"), {
+      type: "ice_failure",
+      roomId,
+      uid,
+      timestamp: Date.now(),
+    });
     leaveRoom();
-  }, [leaveRoom]);
+  }, [leaveRoom, roomId, uid]);
 
   const {
     localStream,
@@ -74,6 +83,13 @@ export default function VideoChat({
   }, [closeWebRTC]);
 
   function handleEnd() {
+    const db = getFirebaseDb();
+    push(ref(db, "errors"), {
+      type: "user_end_chat",
+      roomId,
+      uid,
+      timestamp: Date.now(),
+    });
     leaveRoom();
     closeWebRTC();
     onDisconnect();
@@ -85,6 +101,13 @@ export default function VideoChat({
     if (newRoomId) {
       onNext(newRoomId);
     } else {
+      const db = getFirebaseDb();
+      push(ref(db, "errors"), {
+        type: "user_next_no_partner",
+        roomId,
+        uid,
+        timestamp: Date.now(),
+      });
       leaveRoom();
       onNext();
     }
