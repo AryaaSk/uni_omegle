@@ -3,25 +3,26 @@ export interface University {
   name: string;
   shortName: string;
   logoFile: string;
+  color: string;
 }
 
 export const FEATURED_UNIVERSITIES: University[] = [
-  { domain: "cam.ac.uk", name: "University of Cambridge", shortName: "Cambridge", logoFile: "cambridge.png" },
-  { domain: "ox.ac.uk", name: "University of Oxford", shortName: "Oxford", logoFile: "oxford.png" },
-  { domain: "imperial.ac.uk", name: "Imperial College London", shortName: "Imperial", logoFile: "imperial.png" },
-  { domain: "nottingham.ac.uk", name: "University of Nottingham", shortName: "Nottingham", logoFile: "nottingham.png" },
-  { domain: "bham.ac.uk", name: "University of Birmingham", shortName: "Birmingham", logoFile: "birmingham.png" },
-  { domain: "warwick.ac.uk", name: "University of Warwick", shortName: "Warwick", logoFile: "warwick.png" },
-  { domain: "exeter.ac.uk", name: "University of Exeter", shortName: "Exeter", logoFile: "exeter.png" },
-  { domain: "kcl.ac.uk", name: "King's College London", shortName: "KCL", logoFile: "kcl.png" },
-  { domain: "ucl.ac.uk", name: "University College London", shortName: "UCL", logoFile: "ucl.png" },
-  { domain: "ed.ac.uk", name: "University of Edinburgh", shortName: "Edinburgh", logoFile: "edinburgh.png" },
-  { domain: "manchester.ac.uk", name: "University of Manchester", shortName: "Manchester", logoFile: "manchester.png" },
-  { domain: "bristol.ac.uk", name: "University of Bristol", shortName: "Bristol", logoFile: "bristol.png" },
-  { domain: "lse.ac.uk", name: "London School of Economics", shortName: "LSE", logoFile: "lse.png" },
-  { domain: "leeds.ac.uk", name: "University of Leeds", shortName: "Leeds", logoFile: "leeds.png" },
-  { domain: "dur.ac.uk", name: "Durham University", shortName: "Durham", logoFile: "durham.png" },
-  { domain: "st-andrews.ac.uk", name: "University of St Andrews", shortName: "St Andrews", logoFile: "standrews.png" },
+  { domain: "cam.ac.uk", name: "University of Cambridge", shortName: "Cambridge", logoFile: "cambridge.png", color: "#A3C1AD" },
+  { domain: "ox.ac.uk", name: "University of Oxford", shortName: "Oxford", logoFile: "oxford.png", color: "#002147" },
+  { domain: "imperial.ac.uk", name: "Imperial College London", shortName: "Imperial", logoFile: "imperial.svg", color: "#003E74" },
+  { domain: "nottingham.ac.uk", name: "University of Nottingham", shortName: "Nottingham", logoFile: "nottingham.jpg", color: "#005B82" },
+  { domain: "bham.ac.uk", name: "University of Birmingham", shortName: "Birmingham", logoFile: "birmingham.svg", color: "#6F2DA8" },
+  { domain: "warwick.ac.uk", name: "University of Warwick", shortName: "Warwick", logoFile: "warwick.svg", color: "#5F2167" },
+  { domain: "exeter.ac.uk", name: "University of Exeter", shortName: "Exeter", logoFile: "exeter.svg", color: "#00674F" },
+  { domain: "kcl.ac.uk", name: "King's College London", shortName: "KCL", logoFile: "kcl.png", color: "#E31837" },
+  { domain: "ucl.ac.uk", name: "University College London", shortName: "UCL", logoFile: "ucl.jpg", color: "#500778" },
+  { domain: "ed.ac.uk", name: "University of Edinburgh", shortName: "Edinburgh", logoFile: "edinburgh.png", color: "#B90E31" },
+  { domain: "manchester.ac.uk", name: "University of Manchester", shortName: "Manchester", logoFile: "manchester.jpg", color: "#7B2D8B" },
+  { domain: "bristol.ac.uk", name: "University of Bristol", shortName: "Bristol", logoFile: "bristol.svg", color: "#B01C2E" },
+  { domain: "lse.ac.uk", name: "London School of Economics", shortName: "LSE", logoFile: "lse.png", color: "#D50032" },
+  { domain: "leeds.ac.uk", name: "University of Leeds", shortName: "Leeds", logoFile: "leeds.png", color: "#003C71" },
+  { domain: "dur.ac.uk", name: "Durham University", shortName: "Durham", logoFile: "durham.png", color: "#7E317B" },
+  { domain: "st-andrews.ac.uk", name: "University of St Andrews", shortName: "St Andrews", logoFile: "standrews.svg", color: "#00539B" },
 ];
 
 const EXTRA_DOMAIN_MAP: Record<string, string> = {
@@ -79,6 +80,20 @@ export function getUniversityName(email: string): string | null {
     const prefix = domain.replace(".edu", "").split(".").pop() || domain;
     return `${prefix.charAt(0).toUpperCase()}${prefix.slice(1)} University`;
   }
+
+  return null;
+}
+
+export function getUniversityLogo(email: string): string | null {
+  const atIndex = email.indexOf("@");
+  if (atIndex === -1) return null;
+
+  const domain = email.slice(atIndex + 1).toLowerCase();
+
+  const featured = FEATURED_UNIVERSITIES.find(
+    (u) => domain === u.domain || domain.endsWith("." + u.domain)
+  );
+  if (featured) return `/${featured.logoFile}`;
 
   return null;
 }

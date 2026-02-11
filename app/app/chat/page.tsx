@@ -64,7 +64,7 @@ function ChatContent() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
+      {chatState !== "connected" && <Navbar />}
 
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
         <div className="w-full max-w-5xl">

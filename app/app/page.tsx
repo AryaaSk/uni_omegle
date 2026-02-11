@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import { FEATURED_UNIVERSITIES } from "@/lib/universities";
+import type { University } from "@/lib/universities";
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -25,59 +26,59 @@ export default function Home() {
     <div className="min-h-screen flex flex-col">
       <Navbar />
 
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-20">
-        <div className="max-w-3xl text-center space-y-8">
-          {/* Hero */}
-          <h1 className="text-5xl sm:text-7xl font-bold tracking-tight">
+      <main className="flex-1 flex flex-col items-center px-4">
+        {/* Hero */}
+        <div className="flex flex-col items-center text-center gap-6 pt-20 pb-16">
+          <h1 className="text-6xl sm:text-8xl font-bold tracking-tight">
             uni<span className="text-primary">omegle</span>
           </h1>
-          <p className="text-xl text-muted max-w-lg mx-auto">
-            Video chat with students from universities across the UK.
-            Anonymous. Verified. Fun.
+          <p className="text-lg text-muted max-w-md">
+            Anonymous video chat between UK university students.
           </p>
 
           <button
             onClick={handleGetStarted}
             disabled={loading}
-            className="rounded-full bg-primary px-10 py-4 text-lg text-background font-semibold hover:bg-primary-dark disabled:opacity-50 transition-colors shadow-lg shadow-primary/25"
+            className="mt-4 rounded-full bg-primary px-14 py-5 text-xl text-background font-bold hover:bg-primary-dark hover:scale-105 disabled:opacity-50 transition-all shadow-xl shadow-primary/30"
           >
-            {loading ? "Loading..." : user ? "Go to Chat" : "Get Started"}
+            {loading ? "..." : "Start Chatting"}
           </button>
 
-          <p className="text-sm text-muted/50">
-            Free. No downloads. Just your uni email.
+          <p className="text-sm text-muted/40 mt-2">
+            Just your uni email. Nothing else.
           </p>
         </div>
 
         {/* University Logo Ticker */}
-        <div className="w-full mt-20 space-y-4">
+        <div className="w-full py-16 space-y-4">
           <p className="text-center text-sm text-muted/60 uppercase tracking-widest font-medium">
-            Trusted by students from
+            Students from
           </p>
           <UniversityTicker />
         </div>
 
-        {/* Feature Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl w-full mt-20">
-          <FeatureCard
-            icon={<ShieldIcon />}
-            iconColor="text-primary bg-primary/10"
-            title="University Verified"
-            description="Only .ac.uk and .edu email addresses. Every user is a real student."
-          />
-          <FeatureCard
-            icon={<LinkIcon />}
-            iconColor="text-accent bg-accent/10"
-            title="Peer-to-Peer"
-            description="Video streams go directly between you and your partner. No server in the middle."
-          />
-          <FeatureCard
-            icon={<MaskIcon />}
-            iconColor="text-highlight bg-highlight/10"
-            title="Anonymous"
-            description="Only your university is shown. Chat freely with no strings attached."
-          />
+        {/* How it works */}
+        <div className="flex flex-col sm:flex-row items-stretch gap-4 max-w-4xl w-full py-16">
+          <div className="flex-1 rounded-2xl border border-surface-border bg-surface/50 px-6 py-5">
+            <p className="text-foreground leading-relaxed">
+              <span className="text-primary font-semibold">.ac.uk</span> or <span className="text-primary font-semibold">.edu</span> email required.
+              {" "}Everyone here is actually a student.
+            </p>
+          </div>
+          <div className="flex-1 rounded-2xl border border-surface-border bg-surface/50 px-6 py-5">
+            <p className="text-foreground leading-relaxed">
+              Video goes <span className="text-accent font-semibold">directly</span> between you and your partner.
+              {" "}We never see or store it.
+            </p>
+          </div>
+          <div className="flex-1 rounded-2xl border border-surface-border bg-surface/50 px-6 py-5">
+            <p className="text-foreground leading-relaxed">
+              They only see your <span className="text-highlight font-semibold">university</span>, not your name or email.
+              {" "}Chat without the pressure.
+            </p>
+          </div>
         </div>
+
       </main>
     </div>
   );
@@ -89,10 +90,48 @@ export default function Home() {
 
 function UniversityTicker() {
   const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
+  const [activeSet, setActiveSet] = useState<Set<number>>(new Set());
 
   const unis = FEATURED_UNIVERSITIES.filter((u) => !failedLogos.has(u.logoFile));
 
-  // If no logos loaded yet (user hasn't added SVGs), show text badges instead
+  // Randomly light up universities — each one independently toggles on/off
+  // with staggered timing so 3-5 are glowing at any moment
+  useEffect(() => {
+    if (unis.length === 0) return;
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    function sparkOne() {
+      const idx = Math.floor(Math.random() * unis.length);
+      setActiveSet((prev) => new Set(prev).add(idx));
+
+      // Stay lit for 1.5-3s
+      const duration = 1500 + Math.random() * 1500;
+      const off = setTimeout(() => {
+        setActiveSet((prev) => {
+          const next = new Set(prev);
+          next.delete(idx);
+          return next;
+        });
+      }, duration);
+      timers.push(off);
+    }
+
+    // Light up a few immediately
+    for (let i = 0; i < 3; i++) {
+      setTimeout(() => sparkOne(), i * 400);
+    }
+
+    // Then keep sparking new ones
+    const interval = setInterval(sparkOne, 700);
+
+    return () => {
+      clearInterval(interval);
+      timers.forEach(clearTimeout);
+    };
+  }, [unis.length]);
+
+  // If no logos loaded, show text badges
   if (unis.length === 0) {
     return (
       <div className="flex flex-wrap justify-center gap-3 px-4">
@@ -112,90 +151,94 @@ function UniversityTicker() {
     setFailedLogos((prev) => new Set(prev).add(logoFile));
   };
 
-  // Double the list for seamless loop
+  // Double for seamless loop
   const doubled = [...unis, ...unis];
 
   return (
     <div className="relative overflow-hidden">
       {/* Left fade */}
-      <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
+      <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
       {/* Right fade */}
-      <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none" />
+      <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none" />
 
       <div
-        className="flex items-center gap-12 py-4"
-        style={{ animation: "marquee 40s linear infinite", width: "max-content" }}
+        className="flex items-center gap-10 py-6"
+        style={{ animation: "marquee 50s linear infinite", width: "max-content" }}
       >
-        {doubled.map((uni, i) => (
-          <Image
-            key={`${uni.domain}-${i}`}
-            src={`/logos/${uni.logoFile}`}
-            alt={uni.name}
-            width={48}
-            height={48}
-            className="h-10 w-auto opacity-40 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-300"
-            onError={() => handleLogoError(uni.logoFile)}
-          />
-        ))}
+        {doubled.map((uni, i) => {
+          const isActive = activeSet.has(i % unis.length);
+          return (
+            <UniTickerItem
+              key={`${uni.domain}-${i}`}
+              uni={uni}
+              isActive={isActive}
+              onLogoError={handleLogoError}
+            />
+          );
+        })}
       </div>
     </div>
   );
 }
 
-// ========================
-// Feature Card
-// ========================
-
-function FeatureCard({
-  icon,
-  iconColor,
-  title,
-  description,
+function UniTickerItem({
+  uni,
+  isActive,
+  onLogoError,
 }: {
-  icon: React.ReactNode;
-  iconColor: string;
-  title: string;
-  description: string;
+  uni: University;
+  isActive: boolean;
+  onLogoError: (logoFile: string) => void;
 }) {
+  const [logoOk, setLogoOk] = useState(true);
+
   return (
-    <div className="rounded-2xl border border-surface-border bg-surface p-6 space-y-4">
-      <div className={`inline-flex items-center justify-center h-12 w-12 rounded-xl ${iconColor}`}>
-        {icon}
+    <div className="relative flex flex-col items-center gap-2 shrink-0">
+      {/* Glow ring behind logo */}
+      <div
+        className="absolute -inset-2 rounded-full blur-xl transition-opacity duration-700"
+        style={{
+          backgroundColor: uni.color,
+          opacity: isActive ? 0.35 : 0,
+        }}
+      />
+      {/* Logo */}
+      <div
+        className="relative h-14 w-14 flex items-center justify-center rounded-full border transition-all duration-500"
+        style={{
+          borderColor: isActive ? uni.color : "var(--surface-border)",
+          backgroundColor: isActive ? `${uni.color}15` : "var(--surface)",
+          boxShadow: isActive ? `0 0 20px ${uni.color}40` : "none",
+        }}
+      >
+        {logoOk ? (
+          <Image
+            src={`/${uni.logoFile}`}
+            alt={uni.name}
+            width={36}
+            height={36}
+            className="h-8 w-8 object-contain transition-all duration-500"
+            style={{
+              filter: isActive ? "none" : "grayscale(100%)",
+              opacity: isActive ? 1 : 0.5,
+            }}
+            onError={() => {
+              setLogoOk(false);
+              onLogoError(uni.logoFile);
+            }}
+          />
+        ) : (
+          <span className="text-xs font-bold text-muted">{uni.shortName.charAt(0)}</span>
+        )}
       </div>
-      <h3 className="font-semibold text-lg">{title}</h3>
-      <p className="text-sm text-muted leading-relaxed">{description}</p>
+      {/* Name */}
+      <span
+        className="text-xs font-medium transition-colors duration-500 whitespace-nowrap"
+        style={{ color: isActive ? uni.color : "var(--muted)" }}
+      >
+        {uni.shortName}
+      </span>
     </div>
   );
 }
 
-// ========================
-// SVG Icons
-// ========================
-
-function ShieldIcon() {
-  return (
-    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-      <path d="m9 12 2 2 4-4" />
-    </svg>
-  );
-}
-
-function LinkIcon() {
-  return (
-    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-    </svg>
-  );
-}
-
-function MaskIcon() {
-  return (
-    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none" />
-      <circle cx="15" cy="10" r="1.5" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}

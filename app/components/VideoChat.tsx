@@ -4,7 +4,8 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useRoom } from "@/lib/room";
 import { useWebRTC } from "@/lib/webrtc";
-import { getUniversityName } from "@/lib/universities";
+import { getUniversityName, getUniversityLogo } from "@/lib/universities";
+import Image from "next/image";
 
 interface VideoChatProps {
   roomId: string;
@@ -90,7 +91,9 @@ export default function VideoChat({
   }
 
   const userUniName = userEmail ? getUniversityName(userEmail) : null;
+  const userUniLogo = userEmail ? getUniversityLogo(userEmail) : null;
   const partnerUniName = partnerEmail ? getUniversityName(partnerEmail) : null;
+  const partnerUniLogo = partnerEmail ? getUniversityLogo(partnerEmail) : null;
 
   // ========================
   // Disconnected State
@@ -129,21 +132,26 @@ export default function VideoChat({
   const isConnecting = connectionState === "new" || connectionState === "connecting" || !partnerUid;
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-background p-4 gap-4">
+    <div className="fixed inset-0 flex flex-col bg-background p-3 gap-3">
+      {/* Branding bar */}
+      <div className="shrink-0 text-center">
+        <span className="text-3xl font-bold">uni<span className="text-primary">omegle</span>.com</span>
+      </div>
+
       {/* Remote Video — top half */}
-      <div className="relative flex-1 min-h-0 rounded-2xl overflow-hidden">
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          className="h-full w-full object-cover"
-        />
-        <div className="absolute top-3 left-3 z-10">
-          <UniBadge name={partnerUniName} fallback={partnerEmail || "Partner"} />
+      <div className="relative flex-1 min-h-0">
+        <div className="absolute inset-0 rounded-2xl overflow-hidden">
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            className="h-full w-full object-cover"
+          />
         </div>
+        <UniBadge name={partnerUniName} logo={partnerUniLogo} fallback={partnerEmail || "Partner"} />
 
         {isConnecting && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
+          <div className="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-4 bg-black/80">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
             <p className="text-muted">Connecting...</p>
           </div>
@@ -151,21 +159,21 @@ export default function VideoChat({
       </div>
 
       {/* Local Video — bottom half */}
-      <div className="relative flex-1 min-h-0 rounded-2xl overflow-hidden">
-        <video
-          ref={localVideoRef}
-          autoPlay
-          playsInline
-          muted
-          className="h-full w-full object-cover"
-        />
-        <div className="absolute top-3 left-3 z-10">
-          <UniBadge name={userUniName} fallback={userEmail || "You"} />
+      <div className="relative flex-1 min-h-0">
+        <div className="absolute inset-0 rounded-2xl overflow-hidden">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="h-full w-full object-cover"
+          />
         </div>
+        <UniBadge name={userUniName} logo={userUniLogo} fallback={userEmail || "You"} />
       </div>
 
       {/* Controls — bottom */}
-      <div className="relative flex justify-center pb-2">
+      <div className="relative flex justify-center pb-1">
         <div className="inline-flex items-center gap-3 rounded-2xl bg-surface/80 backdrop-blur-sm border border-surface-border px-6 py-3">
           <button
             onClick={toggleAudio}
@@ -220,7 +228,6 @@ export default function VideoChat({
             Next
           </button>
 
-          <span className="text-xs text-muted/30 select-none ml-2">uniomegle.com</span>
         </div>
       </div>
     </div>
@@ -231,18 +238,28 @@ export default function VideoChat({
 // University Badge
 // ========================
 
-function UniBadge({ name, fallback }: { name: string | null; fallback: string }) {
-  if (name) {
-    return (
-      <span className="inline-flex items-center self-start rounded-full bg-primary/10 text-primary px-3 py-1 text-sm font-medium truncate">
-        {name}
-      </span>
-    );
-  }
+function UniBadge({ name, logo, fallback }: { name: string | null; logo: string | null; fallback: string }) {
+  const [logoError, setLogoError] = useState(false);
+  const showLogo = logo && !logoError;
+
   return (
-    <span className="text-sm font-medium text-muted truncate">
-      {fallback}
-    </span>
+    <div className="absolute top-3 left-3 z-10 flex items-center gap-2 rounded-lg bg-black/60 backdrop-blur-sm px-3 py-1.5" style={{ transform: "translateZ(0)" }}>
+      {showLogo && (
+        <Image
+          src={logo}
+          alt=""
+          width={24}
+          height={24}
+          className="h-6 w-6 object-contain shrink-0"
+          onError={() => setLogoError(true)}
+        />
+      )}
+      {name ? (
+        <span className="text-sm font-semibold text-primary">{name}</span>
+      ) : (
+        <span className="text-sm font-semibold text-muted">{fallback}</span>
+      )}
+    </div>
   );
 }
 

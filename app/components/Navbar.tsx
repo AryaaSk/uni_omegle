@@ -19,7 +19,7 @@ export default function Navbar() {
   return (
     <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-4 border-b border-surface-border bg-surface/80 backdrop-blur-sm">
       <Link href="/" className="text-xl font-bold">
-        uni<span className="text-primary">omegle</span>
+        uni<span className="text-primary">omegle</span>.com
       </Link>
 
       <div className="flex items-center gap-4">
