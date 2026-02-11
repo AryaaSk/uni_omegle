@@ -1,0 +1,160 @@
+body
+{
+    margin: 0;
+}
+.container
+{
+    height: 100vh;
+    width: 100vw;
+}
+.containerInner
+{
+    height: 100%;
+    width: 100%;
+
+    margin: 0 auto;
+
+    display: grid;
+    place-content: center;
+}
+
+.buttons
+{
+    height: max-content;
+    width: max-content;
+}
+.dashboardButton
+{
+    height: 100px;
+    width: 600px;
+
+    border: none;
+    background-color: rgb(225, 225, 225);
+    border-radius: 20px;
+    font-size: 40px;
+}
+
+
+#loginSignupWrapper
+{
+    display: none;
+}
+.loginSignupShadow
+{
+    position: absolute;
+    top:0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+
+    background-color: rgba(53, 53, 53, 0.269);
+}
+.loginSignup
+{   
+    position: fixed;
+    top:0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin: auto;
+
+    z-index: 1;
+
+    height: 80vh;
+    width: 80vw;
+
+    background-color: white;
+    border-radius: 10px;
+
+    display: grid;
+    grid-template-rows: 50px auto;
+}
+.loginSignupContainerDiv
+{
+    height: 100%;
+    width: 100%;
+}
+
+.loginSignupContainerDiv.switch
+{
+    position: relative;
+}
+.loginSignupSwitch
+{
+    width: 300px;
+    height: 100%;
+
+    margin: 0 auto;
+    text-align: center;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.closeButton
+{
+    position: absolute; 
+    top: 10px; 
+    bottom: 10px; 
+    right: 10px; 
+    
+    width: 30px; 
+    height: 30px;
+
+    border: none;
+    border-radius: 15px;
+    background-color: rgb(225, 225, 225);
+    font-size: large;
+}
+.closeButton:active
+{ background-color: lightgrey; }
+
+.loginSignupContainerDiv.content
+{
+    position: relative;
+}
+.authContent
+{
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+
+    padding: 10px;
+    text-align: center;
+}
+.authTextfield
+{
+    width: 350px;
+    height: 40px;
+    margin-bottom: 10px;
+    padding-left: 5px;
+    padding-right: 5px;
+
+    border: none;
+    background-color: rgb(225, 225, 225);
+    border-radius: 5px;
+
+    font-size: large;
+}
+.authButton
+{
+    width: 250px;
+    height: 35px;
+    margin-top: 10px;
+    padding-left: 5px;
+    padding-right: 5px;
+
+    border: none;
+    background-color: var(--globalTint);
+    border-radius: 5px;
+
+    color: white;
+    font-size: large;
+}
+.authButton:active
+{
+    color: white;
+    background-color: var(--globalTintSelected);
+}

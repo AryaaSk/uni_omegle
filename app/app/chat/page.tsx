@@ -2,66 +2,44 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
+import { useCurrentRoom } from "@/lib/currentRoom";
 import { useMatchmaking } from "@/lib/matchmaking";
-import { ref, get, remove } from "firebase/database";
-import { getFirebaseDb } from "@/lib/firebase";
 import AuthGuard from "@/components/AuthGuard";
 import VideoChat from "@/components/VideoChat";
 import Navbar from "@/components/Navbar";
-import type { ChatState } from "@/lib/types";
 
 // ========================
 // Chat Page
 //
-// State machine:
-//   IDLE → SEARCHING → MATCHED → CONNECTING → CONNECTED → DISCONNECTED
-//                                                       ↘ SEARCHING (via "Next")
+// State machine: IDLE → SEARCHING → CONNECTED
 //
-// All matchmaking is client-driven via Firebase RTDB.
-// The page orchestrates the transitions between states.
+// Connected state is driven by the global currentRoomId
+// from CurrentRoomProvider (users/{uid}/currentRoom listener).
 // ========================
 
 function ChatContent() {
   const { user } = useAuth();
   const uid = user?.uid;
+  const { currentRoomId } = useCurrentRoom();
 
-  const [chatState, setChatState] = useState<ChatState>("idle");
+  const [chatState, setChatState] = useState<"idle" | "searching" | "connected">("idle");
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
 
-  const { status, roomId, error, startSearching, stopSearching } =
-    useMatchmaking(uid);
+  const { isSearching, startSearching, stopSearching } = useMatchmaking(uid, user?.email || undefined);
 
-  // ========================
-  // Clean up stale match on page load
-  //
-  // If matches/{uid} exists from a previous session, remove it so
-  // the user starts fresh. The room's heartbeat system will handle
-  // termination on its own.
-  // ========================
-
+  // Sync local state with global currentRoomId
+  // Handles: null→room (matched), room→room (skipToNext via provider), room→null (partner left)
   useEffect(() => {
-    if (!uid || chatState !== "idle") return;
-
-    get(ref(getFirebaseDb(), `matches/${uid}`)).then(async (snap) => {
-      if (snap.val()) {
-        await remove(ref(getFirebaseDb(), `matches/${uid}`));
+    if (currentRoomId) {
+      if (chatState !== "connected" || activeRoomId !== currentRoomId) {
+        setActiveRoomId(currentRoomId);
+        setChatState("connected");
       }
-    });
-  }, [uid, chatState]);
-
-  // ========================
-  // React to matchmaking state changes
-  //
-  // When matchmaking finds a room, transition directly to "connected".
-  // The initiator role is determined inside useRoom (deterministic).
-  // ========================
-
-  useEffect(() => {
-    if (status === "matched" && roomId) {
-      setActiveRoomId(roomId);
-      setChatState("connected");
+    } else if (chatState === "connected") {
+      setActiveRoomId(null);
+      setChatState("idle");
     }
-  }, [status, roomId]);
+  }, [currentRoomId, chatState, activeRoomId]);
 
   // ========================
   // User Actions
@@ -78,24 +56,26 @@ function ChatContent() {
     setChatState("idle");
   }, [stopSearching]);
 
-  // "End Chat" — go back to idle
   const handleDisconnect = useCallback(() => {
-    if (uid) remove(ref(getFirebaseDb(), `matches/${uid}`)).catch(() => {});
     setActiveRoomId(null);
     setChatState("idle");
-  }, [uid]);
+  }, []);
 
-  // "Next" — terminate current room and immediately re-queue
-  const handleNext = useCallback(() => {
-    if (!user?.emailVerified) return;
-    if (uid) remove(ref(getFirebaseDb(), `matches/${uid}`)).catch(() => {});
-    setActiveRoomId(null);
-    setChatState("searching");
-    startSearching();
-  }, [user, uid, startSearching]);
+  const handleNext = useCallback((newRoomId?: string) => {
+    if (newRoomId) {
+      // Atomic skip — new room already created by skipToNext()
+      setActiveRoomId(newRoomId);
+      setChatState("connected");
+    } else {
+      // No next partner — go to searching
+      setActiveRoomId(null);
+      setChatState("searching");
+      startSearching();
+    }
+  }, [startSearching]);
 
   // ========================
-  // Render based on state
+  // Render
   // ========================
 
   return (
@@ -132,14 +112,9 @@ function ChatContent() {
               <div className="text-center">
                 <h2 className="text-2xl font-bold">Looking for a partner...</h2>
                 <p className="mt-2 text-foreground/60">
-                  {status === "matching"
-                    ? "Found someone! Connecting..."
-                    : "Waiting for another student to join"}
+                  Waiting for another student to join
                 </p>
               </div>
-              {error && (
-                <p className="text-sm text-red-500">{error}</p>
-              )}
               <button
                 onClick={handleCancelSearch}
                 className="rounded-lg border border-foreground/20 px-6 py-2.5 font-medium hover:bg-foreground/5 transition-colors"
@@ -152,33 +127,13 @@ function ChatContent() {
           {/* CONNECTED STATE */}
           {chatState === "connected" && activeRoomId && uid && (
             <VideoChat
+              key={activeRoomId}
               roomId={activeRoomId}
               uid={uid}
               userEmail={user?.email || undefined}
               onDisconnect={handleDisconnect}
               onNext={handleNext}
             />
-          )}
-
-          {/* DISCONNECTED STATE (handled inside VideoChat, but as fallback) */}
-          {chatState === "disconnected" && (
-            <div className="flex flex-col items-center gap-6 py-20">
-              <h2 className="text-2xl font-bold">Chat Ended</h2>
-              <div className="flex gap-3">
-                <button
-                  onClick={handleNext}
-                  className="rounded-lg bg-foreground px-6 py-2.5 text-background font-medium hover:opacity-90 transition-opacity"
-                >
-                  Find New Partner
-                </button>
-                <button
-                  onClick={handleDisconnect}
-                  className="rounded-lg border border-foreground/20 px-6 py-2.5 font-medium hover:bg-foreground/5 transition-colors"
-                >
-                  Go Home
-                </button>
-              </div>
-            </div>
           )}
         </div>
       </main>

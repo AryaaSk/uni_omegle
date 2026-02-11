@@ -11,7 +11,7 @@ import { useWebRTC } from "@/lib/webrtc";
 // 1. Establishes WebRTC peer connection (signaling via Firebase RTDB)
 // 2. Manages room heartbeats and partner presence
 // 3. Renders local + remote video streams
-// 4. Provides media controls and disconnect options
+// 4. Provides media controls, disconnect, and next
 // ========================
 
 interface VideoChatProps {
@@ -19,7 +19,7 @@ interface VideoChatProps {
   uid: string;
   userEmail?: string;
   onDisconnect: () => void;
-  onNext: () => void;
+  onNext: (newRoomId?: string) => void;
 }
 
 export default function VideoChat({
@@ -33,12 +33,12 @@ export default function VideoChat({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
   // Room management: heartbeats, partner presence, termination
-  const { partnerUid, partnerEmail, partnerOnline, terminated, terminate, isInitiator } = useRoom(roomId, uid, userEmail);
+  const { partnerUid, partnerEmail, terminated, leaveRoom, skipToNext, nextPartnerAvailable, isInitiator } = useRoom(roomId, uid, userEmail);
 
   // WebRTC: media streams + peer connection (signaling via RTDB)
   const handleIceFailure = useCallback(() => {
-    terminate("ice-failure");
-  }, [terminate]);
+    leaveRoom();
+  }, [leaveRoom]);
 
   const {
     localStream,
@@ -86,15 +86,20 @@ export default function VideoChat({
   }, [closeWebRTC]);
 
   function handleEnd() {
-    terminate("user");
+    leaveRoom();
     closeWebRTC();
     onDisconnect();
   }
 
   function handleNext() {
-    terminate("user");
+    const newRoomId = skipToNext();
     closeWebRTC();
-    onNext();
+    if (newRoomId) {
+      onNext(newRoomId);
+    } else {
+      leaveRoom();
+      onNext();
+    }
   }
 
   // ========================
@@ -110,16 +115,18 @@ export default function VideoChat({
         </div>
         <div className="flex gap-3">
           <button
-            onClick={onNext}
-            className="rounded-lg bg-foreground px-6 py-2.5 text-background font-medium hover:opacity-90 transition-opacity"
-          >
-            Find New Partner
-          </button>
-          <button
             onClick={onDisconnect}
             className="rounded-lg border border-foreground/20 px-6 py-2.5 font-medium hover:bg-foreground/5 transition-colors"
           >
-            End Session
+            Back to Home
+          </button>
+          <button
+            onClick={() => {
+              onNext();
+            }}
+            className="rounded-lg bg-foreground px-6 py-2.5 text-background font-medium hover:opacity-90 transition-opacity"
+          >
+            Find New Partner
           </button>
         </div>
       </div>
@@ -128,10 +135,6 @@ export default function VideoChat({
 
   // ========================
   // Active Video Chat
-  //
-  // Video elements are ALWAYS rendered so that refs are valid
-  // when streams become available. A connecting overlay is shown
-  // on top while the peer connection is being established.
   // ========================
 
   const isConnecting = connectionState === "new" || connectionState === "connecting" || !partnerUid;
@@ -158,15 +161,8 @@ export default function VideoChat({
 
         {/* Remote Video Panel */}
         <div className="flex flex-col gap-2">
-          <div className="text-sm font-medium text-foreground/80 truncate flex items-center gap-2">
-            <span>{partnerEmail || "Partner"}</span>
-            {!isConnecting && (
-              <span
-                className={`inline-block h-2 w-2 rounded-full ${
-                  partnerOnline ? "bg-green-400" : "bg-red-400"
-                }`}
-              />
-            )}
+          <div className="text-sm font-medium text-foreground/80 truncate">
+            {partnerEmail || "Partner"}
           </div>
           <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
             <video
@@ -222,17 +218,22 @@ export default function VideoChat({
         </button>
 
         <button
-          onClick={handleNext}
-          className="rounded-full bg-blue-500 px-5 py-3 text-sm font-medium text-white hover:bg-blue-600 transition-colors"
-        >
-          Next
-        </button>
-
-        <button
           onClick={handleEnd}
           className="rounded-full bg-red-500 px-5 py-3 text-sm font-medium text-white hover:bg-red-600 transition-colors"
         >
           End Chat
+        </button>
+
+        <button
+          onClick={handleNext}
+          disabled={!nextPartnerAvailable}
+          className={`rounded-full px-5 py-3 text-sm font-medium transition-opacity ${
+            nextPartnerAvailable
+              ? "bg-foreground text-background hover:opacity-90"
+              : "bg-foreground/30 text-background/50 cursor-not-allowed"
+          }`}
+        >
+          Next
         </button>
       </div>
     </div>

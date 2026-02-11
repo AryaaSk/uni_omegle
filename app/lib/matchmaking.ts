@@ -1,198 +1,144 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   ref,
   set,
+  push,
   remove,
   update,
   onValue,
+  off,
   serverTimestamp,
-  Unsubscribe,
 } from "firebase/database";
 import { getFirebaseDb } from "@/lib/firebase";
-import type { MatchmakingStatus, QueueEntry } from "@/lib/types";
 
 // ========================
-// Helper: Compute deterministic room ID
-// ========================
-
-function computeRoomId(uidA: string, uidB: string): string {
-  return [uidA, uidB].sort().join("_");
-}
-
-// ========================
-// Queue Operations
-// ========================
-
-async function joinQueue(uid: string): Promise<void> {
-  await set(ref(getFirebaseDb(), `queue/${uid}`), {
-    joinedAt: serverTimestamp(),
-  });
-}
-
-async function leaveQueue(uid: string): Promise<void> {
-  await remove(ref(getFirebaseDb(), `queue/${uid}`));
-}
-
-// ========================
-// Room Creation + Notification
+// Matchmaking Hook — Queue-Based
 //
-// Single atomic multi-path update that:
-// 1. Creates/updates room core data (users, status, createdAt)
-// 2. Writes the caller's own presence heartbeat
-// 3. Writes roomId to matches/{uid} for both users
-// 4. Removes both users from the queue
+// Handles queue operations only. The global CurrentRoomProvider
+// listens on users/{uid}/currentRoom and drives room entry.
 //
-// Both clients may call this for the same pair — it's idempotent:
-// same sorted users array, same status, and each writes only their
-// own presence path (so they don't overwrite each other).
-//
-// This avoids runTransaction, which requires read access on the room
-// path — problematic for rooms that don't exist yet (read rules
-// check users array membership, which is empty before creation).
+// Flow:
+// 1. startSearching() → add to queue, listen for queue changes
+// 2. Queue listener fires → find first non-self UID (sorted keys)
+// 3. If selfUid < partnerUid alphabetically → create room
+//    (deterministic: both clients agree on who creates)
+// 4. Room creation is a single atomic multi-path update that
+//    creates the room, sets both users' currentRoom, and clears queue
+// 5. CurrentRoomProvider picks up the change → redirect + connected
 // ========================
 
-async function createRoomAndNotify(
-  uid: string,
-  partnerUid: string
-): Promise<string> {
-  const roomId = computeRoomId(uid, partnerUid);
+async function createRoomAndNotify(uid: string, partnerUid: string, log: (msg: string) => void): Promise<void> {
+  const roomId = push(ref(getFirebaseDb(), "rooms")).key!;
   const sortedUsers = [uid, partnerUid].sort() as [string, string];
+
+  log(`Creating room ${roomId} with partner ${partnerUid}`);
 
   await update(ref(getFirebaseDb()), {
     [`rooms/${roomId}/users`]: sortedUsers,
-    [`rooms/${roomId}/status`]: "active",
-    [`rooms/${roomId}/createdAt`]: serverTimestamp(),
-    [`rooms/${roomId}/presence/${uid}/heartbeat`]: serverTimestamp(),
-    [`matches/${uid}`]: roomId,
-    [`matches/${partnerUid}`]: roomId,
+    [`rooms/${roomId}/${uid}/heartbeat`]: serverTimestamp(),
+    [`users/${uid}/currentRoom`]: roomId,
+    [`users/${partnerUid}/currentRoom`]: roomId,
     [`queue/${uid}`]: null,
     [`queue/${partnerUid}`]: null,
   });
 
-  return roomId;
+  log(`Room ${roomId} created successfully`);
 }
 
-// ========================
-// useMatchmaking Hook
-//
-// State machine: idle → queued → matching → matched
-//
-// In "queued" state, the client:
-// - Watches the queue for >= 2 users
-// - Watches matches/{ownUid} in case another user matched them
-//
-// When >= 2 users exist, the client picks a partner and creates
-// the room directly. Since room IDs are deterministic, duplicate
-// creation attempts are safe.
-// ========================
+export function useMatchmaking(uid: string | undefined, email: string | undefined) {
+  const [isSearching, setIsSearching] = useState(false);
 
-export function useMatchmaking(uid: string | undefined) {
-  const [status, setStatus] = useState<MatchmakingStatus>("idle");
-  const [roomId, setRoomId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const matchedRef = useRef(false);
+  const queueListenerRef = useRef<ReturnType<typeof ref> | null>(null);
 
-  // Track whether we're currently attempting to create a room
-  const attemptingRef = useRef(false);
-  // Store unsubscribe functions for cleanup
-  const unsubscribesRef = useRef<Unsubscribe[]>([]);
+  const tag = email || uid || "unknown";
+  const log = useCallback((msg: string) => {
+    console.log(`[${tag}] [matchmaking] ${msg}`);
+  }, [tag]);
 
   const cleanup = useCallback(() => {
-    unsubscribesRef.current.forEach((unsub) => unsub());
-    unsubscribesRef.current = [];
+    if (queueListenerRef.current) {
+      off(queueListenerRef.current);
+      queueListenerRef.current = null;
+    }
   }, []);
 
   const startSearching = useCallback(async () => {
     if (!uid) return;
 
-    setError(null);
-    setRoomId(null);
+    matchedRef.current = false;
     cleanup();
+    setIsSearching(true);
+
+    log("Joining queue");
 
     try {
-      await joinQueue(uid);
-      setStatus("queued");
+      // Add self to queue
+      await set(ref(getFirebaseDb(), `queue/${uid}`), true);
+      log("Added to queue");
 
-      // Watch for match notifications (in case another user matches us)
-      const matchRef = ref(getFirebaseDb(), `matches/${uid}`);
-      const matchUnsub = onValue(matchRef, async (snapshot) => {
-        const matchedRoomId = snapshot.val() as string | null;
-        if (matchedRoomId) {
-          cleanup();
-          setRoomId(matchedRoomId);
-          setStatus("matched");
-        }
-      });
-      unsubscribesRef.current.push(matchUnsub);
-
-      // Watch the queue for potential matches
+      // Listen for queue changes
       const queueRef = ref(getFirebaseDb(), "queue");
-      const queueUnsub = onValue(queueRef, async (snapshot) => {
-        if (attemptingRef.current) return;
+      queueListenerRef.current = queueRef;
 
-        const queue = snapshot.val() as Record<string, QueueEntry> | null;
+      onValue(queueRef, async (snapshot) => {
+        if (matchedRef.current) return;
+
+        const queue = snapshot.val() as Record<string, boolean> | null;
         if (!queue) return;
 
-        const entries = Object.entries(queue);
-        if (entries.length < 2) return;
+        // Sort keys for deterministic ordering
+        const sortedKeys = Object.keys(queue).sort();
+        log(`Queue update: ${sortedKeys.length} users [${sortedKeys.join(", ")}]`);
 
-        // Sort by joinedAt to pick the earliest partner
-        entries.sort((a, b) => (a[1].joinedAt || 0) - (b[1].joinedAt || 0));
+        const partnerUid = sortedKeys.find((k) => k !== uid);
+        if (!partnerUid) {
+          log("No partner in queue yet");
+          return;
+        }
 
-        const partner = entries.find(([entryUid]) => entryUid !== uid);
-        if (!partner) return;
+        // Only the alphabetically-first UID creates the room
+        if (uid > partnerUid) {
+          log(`Partner ${partnerUid} found — they are responsible for room creation`);
+          return;
+        }
 
-        const partnerUid = partner[0];
+        // Prevent double-creation
+        if (matchedRef.current) return;
+        matchedRef.current = true;
 
-        attemptingRef.current = true;
-        setStatus("matching");
+        log(`Partner ${partnerUid} found — I am responsible for room creation`);
 
         try {
-          const newRoomId = await createRoomAndNotify(uid, partnerUid);
+          await createRoomAndNotify(uid, partnerUid, log);
           cleanup();
-          setRoomId(newRoomId);
-          setStatus("matched");
+          setIsSearching(false);
         } catch (err) {
-          console.error("Room creation failed:", err);
-          setStatus("queued");
-        } finally {
-          attemptingRef.current = false;
+          log(`Room creation failed: ${err}`);
+          matchedRef.current = false;
         }
       });
-      unsubscribesRef.current.push(queueUnsub);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to join queue";
-      setError(message);
-      setStatus("idle");
+      log(`Failed to join queue: ${err}`);
+      setIsSearching(false);
     }
-  }, [uid, cleanup]);
+  }, [uid, cleanup, log]);
 
   const stopSearching = useCallback(async () => {
     if (!uid) return;
+    log("Stopping search");
+    matchedRef.current = false;
     cleanup();
-    attemptingRef.current = false;
+    setIsSearching(false);
     try {
-      await leaveQueue(uid);
-      await remove(ref(getFirebaseDb(), `matches/${uid}`));
+      await remove(ref(getFirebaseDb(), `queue/${uid}`));
+      log("Removed from queue");
     } catch {
-      // Best effort cleanup
+      // Best effort
     }
-    setRoomId(null);
-    setStatus("idle");
-  }, [uid, cleanup]);
+  }, [uid, cleanup, log]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanup();
-      if (uid) {
-        leaveQueue(uid).catch(() => {});
-        remove(ref(getFirebaseDb(), `matches/${uid}`)).catch(() => {});
-      }
-    };
-  }, [uid, cleanup]);
-
-  return { status, roomId, error, startSearching, stopSearching };
+  return { isSearching, startSearching, stopSearching };
 }

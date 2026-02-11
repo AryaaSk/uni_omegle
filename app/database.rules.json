@@ -1,5 +1,12 @@
 {
   "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid && auth.token.email_verified === true",
+        ".write": "auth != null && auth.token.email_verified === true"
+      }
+    },
+
     "queue": {
       ".read": "auth != null && auth.token.email_verified === true",
       "$uid": {
@@ -7,22 +14,10 @@
       }
     },
 
-"matches": {
-      "$uid": {
-        ".read": "auth != null && auth.uid === $uid && auth.token.email_verified === true",
-        ".write": "auth != null && auth.token.email_verified === true"
-      }
-    },
-
     "rooms": {
       "$roomId": {
-        ".read": "auth != null && auth.token.email_verified === true && (data.child('users/0').val() === auth.uid || data.child('users/1').val() === auth.uid)",
+        ".read": "auth != null && auth.token.email_verified === true && (data.child('users/0').val() === auth.uid || data.child('users/1').val() === auth.uid || !data.exists())",
         ".write": "auth != null && auth.token.email_verified === true && (data.child('users/0').val() === auth.uid || data.child('users/1').val() === auth.uid || !data.exists())",
-        "presence": {
-          "$uid": {
-            ".write": "auth != null && auth.uid === $uid && auth.token.email_verified === true"
-          }
-        },
         "signaling": {
           ".read": "auth != null && auth.token.email_verified === true && (root.child('rooms/' + $roomId + '/users/0').val() === auth.uid || root.child('rooms/' + $roomId + '/users/1').val() === auth.uid)",
           ".write": "auth != null && auth.token.email_verified === true && (root.child('rooms/' + $roomId + '/users/0').val() === auth.uid || root.child('rooms/' + $roomId + '/users/1').val() === auth.uid)"

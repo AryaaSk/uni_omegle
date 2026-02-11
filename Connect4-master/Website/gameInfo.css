@@ -1,0 +1,25 @@
+/*This css file is just for the player info (on the right)*/
+
+.playerBox
+{
+	height: 170px;
+	width: 300px;
+	border-radius: 20px;
+	padding-top: 20px;
+	margin-bottom: 10px;
+
+	background-color: rgb(225, 225, 225);
+	text-align: center;
+
+	display: grid;
+	grid-template-columns: 100%;
+	grid-template-rows: 40px auto;
+}
+
+.infoCounter /*Replica of actual counter*/
+{
+    height: 70px;
+    width: 70px;
+
+    border-radius: 35px;
+}

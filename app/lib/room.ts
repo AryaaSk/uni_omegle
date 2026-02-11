@@ -1,15 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  ref,
-  onValue,
-  set,
-  update,
-  get,
-  remove,
-  serverTimestamp,
-} from "firebase/database";
+import { ref, onValue, set, push, update, serverTimestamp } from "firebase/database";
 import { getFirebaseDb } from "@/lib/firebase";
 import type { Room } from "@/lib/types";
 
@@ -17,148 +9,201 @@ import type { Room } from "@/lib/types";
 // Constants
 // ========================
 
-const HEARTBEAT_INTERVAL_MS = 3_000; // Write heartbeat every 3 seconds
-const PEER_INACTIVE_THRESHOLD_MS = 15_000; // Peer considered inactive after 15 seconds
-const DELETION_GRACE_PERIOD_MS = 10_000; // Wait 10 seconds before final deletion
-const PARTNER_JOIN_TIMEOUT_MS = 30_000; // If partner never starts heartbeat, re-queue
+const HEARTBEAT_INTERVAL_MS = 3_000;
+const PEER_INACTIVE_THRESHOLD_MS = 15_000;
+const PARTNER_JOIN_TIMEOUT_MS = 30_000;
 
 // ========================
 // useRoom Hook
 //
-// Manages the full room lifecycle:
-// 1. Listens for room state changes in RTDB
-// 2. Runs a heartbeat loop (writes own timestamp every 3s)
-// 3. Monitors the partner's heartbeat for staleness
-// 4. Executes two-phase termination when peer goes inactive
-// 5. Handles beforeunload for best-effort cleanup on tab close
+// Manages the room lifecycle for an active room:
+// 1. Listens for room state (deletion = disconnected)
+// 2. Runs heartbeat loop (writes own timestamp every 3s)
+// 3. Monitors partner's heartbeat for staleness
+// 4. Monitors queue for available "Next" partner
+// 5. leaveRoom = atomic delete room + clear both currentRoom
+// 6. skipToNext = atomic swap: delete old room, create new room,
+//    move old partner to queue, connect with new partner
 // ========================
 
 export function useRoom(roomId: string | null, uid: string | undefined, userEmail?: string) {
   const [room, setRoom] = useState<Room | null>(null);
-  const [partnerOnline, setPartnerOnline] = useState(true);
   const [terminated, setTerminated] = useState(false);
+  const [nextPartnerAvailable, setNextPartnerAvailable] = useState(false);
 
-  // Track the partner's last known heartbeat for staleness checks
   const partnerHeartbeatRef = useRef<number>(0);
   const partnerEverHeartbeatRef = useRef<boolean>(false);
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stalenessIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const deletionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const partnerJoinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const terminatedRef = useRef(false);
+
+  // Save partner UID in a ref so leaveRoom can access it after room deletion
+  const partnerUidRef = useRef<string | null>(null);
+  // Save next partner UID from queue
+  const nextPartnerUidRef = useRef<string | null>(null);
+
+  const tag = userEmail || uid || "unknown";
+  const log = useCallback((msg: string) => {
+    console.log(`[${tag}] [room] ${msg}`);
+  }, [tag]);
 
   // Derive partner UID from room data
   const partnerUid =
     room && uid ? room.users.find((u) => u !== uid) ?? null : null;
 
+  // Keep ref in sync
+  useEffect(() => {
+    if (partnerUid) {
+      partnerUidRef.current = partnerUid;
+    }
+  }, [partnerUid]);
+
   // Deterministic initiator: users array is sorted, so both clients
-  // always agree on who is users[0] without any race condition.
+  // always agree on who is users[0].
   const isInitiator = room && uid ? uid === room.users[0] : false;
 
   // ========================
-  // Terminate Room (Two-Phase)
+  // leaveRoom — atomic cleanup
   //
-  // Phase 1: Mark as "terminating" — both clients see this and stop signaling.
-  // Phase 2: After grace period, delete the room if still terminating.
-  //
-  // This prevents split-brain deletion: if both clients try to terminate
-  // simultaneously, the first update wins and the second is a no-op.
-  // The grace period ensures both clients have time to see the termination.
+  // Deletes room + clears both users' currentRoom in one multi-path update.
   // ========================
 
-  const terminate = useCallback(
-    async (reason: "user" | "heartbeat" | "ice-failure") => {
-      if (!roomId || terminatedRef.current) return;
+  const leaveRoom = useCallback(
+    async () => {
+      if (!roomId || !uid || terminatedRef.current) return;
       terminatedRef.current = true;
       setTerminated(true);
 
-      // Stop staleness check immediately
+      log(`Leaving room ${roomId}`);
+
       if (stalenessIntervalRef.current) {
         clearInterval(stalenessIntervalRef.current);
         stalenessIntervalRef.current = null;
       }
 
-      const roomRef = ref(getFirebaseDb(), `rooms/${roomId}`);
+      const partner = partnerUidRef.current;
+      const updates: Record<string, unknown> = {
+        [`rooms/${roomId}`]: null,
+        [`users/${uid}/currentRoom`]: null,
+      };
+      if (partner) {
+        updates[`users/${partner}/currentRoom`] = null;
+      }
 
       try {
-        // Phase 1: Mark as terminating
-        await update(roomRef, {
-          status: "terminating",
-          terminatedBy: uid,
-          terminatedAt: serverTimestamp(),
-        });
-
-        // Phase 2: Schedule final deletion after grace period
-        deletionTimeoutRef.current = setTimeout(async () => {
-          try {
-            const snapshot = await get(roomRef);
-            if (snapshot.exists() && snapshot.val().status === "terminating") {
-              await remove(roomRef);
-            }
-          } catch {
-            // Best effort — another client may have already deleted it
-          }
-        }, DELETION_GRACE_PERIOD_MS);
-      } catch {
-        // Room may have already been deleted by partner
+        await update(ref(getFirebaseDb()), updates);
+        log("Room cleanup complete");
+      } catch (err) {
+        log(`Room cleanup error (may already be deleted): ${err}`);
       }
     },
-    [roomId, uid]
+    [roomId, uid, log]
   );
+
+  // ========================
+  // skipToNext — atomic partner swap
+  //
+  // In a single multi-path update:
+  // - Delete old room
+  // - Create new room with the next queued partner
+  // - Set self + new partner's currentRoom to new room
+  // - Set old partner's currentRoom to null + add them to queue
+  // - Remove new partner from queue
+  //
+  // Returns the new roomId synchronously (Firebase update is fire-and-forget).
+  // ========================
+
+  const skipToNext = useCallback((): string | null => {
+    const nextPartner = nextPartnerUidRef.current;
+    if (!roomId || !uid || !nextPartner || terminatedRef.current) return null;
+
+    terminatedRef.current = true;
+    setTerminated(true);
+
+    if (stalenessIntervalRef.current) {
+      clearInterval(stalenessIntervalRef.current);
+      stalenessIntervalRef.current = null;
+    }
+
+    const newRoomId = push(ref(getFirebaseDb(), "rooms")).key!;
+    const sortedUsers = [uid, nextPartner].sort() as [string, string];
+    const oldPartner = partnerUidRef.current;
+
+    log(`Skipping to next: old room ${roomId}, new room ${newRoomId}, new partner ${nextPartner}, old partner ${oldPartner}`);
+
+    const updates: Record<string, unknown> = {
+      // Delete old room
+      [`rooms/${roomId}`]: null,
+      // Create new room
+      [`rooms/${newRoomId}/users`]: sortedUsers,
+      [`rooms/${newRoomId}/${uid}/heartbeat`]: serverTimestamp(),
+      // Set self's currentRoom to new room
+      [`users/${uid}/currentRoom`]: newRoomId,
+      // Set new partner's currentRoom to new room
+      [`users/${nextPartner}/currentRoom`]: newRoomId,
+      // Remove new partner from queue
+      [`queue/${nextPartner}`]: null,
+    };
+
+    // Move old partner to queue
+    if (oldPartner) {
+      updates[`users/${oldPartner}/currentRoom`] = null;
+      updates[`queue/${oldPartner}`] = true;
+    }
+
+    update(ref(getFirebaseDb()), updates)
+      .then(() => log(`Skip complete — now in room ${newRoomId}`))
+      .catch((err) => log(`Skip failed: ${err}`));
+
+    return newRoomId;
+  }, [roomId, uid, log]);
 
   // ========================
   // Room State Listener
   //
-  // Watches rooms/{roomId} in real-time. When the room transitions
-  // to "terminating" (by either client), we stop the heartbeat
-  // and mark ourselves as terminated.
+  // Watches rooms/{roomId}. When the room is deleted (data = null),
+  // we know the chat has ended.
   // ========================
 
   useEffect(() => {
     if (!roomId || !uid) return;
 
+    log(`Listening on room ${roomId}`);
     const roomRef = ref(getFirebaseDb(), `rooms/${roomId}`);
     const unsub = onValue(roomRef, (snapshot) => {
-      const data = snapshot.val() as Room | null;
-      setRoom(data);
-
-      if (!data) {
-        // Room was deleted
-        setTerminated(true);
-        terminatedRef.current = true;
-        return;
+      const data = snapshot.val();
+      if (data && data.users) {
+        setRoom(data as Room);
+        log(`Room data received — users: [${data.users.join(", ")}]`);
+      } else {
+        setRoom(null);
       }
 
-      if (data.status === "terminating" && !terminatedRef.current) {
-        // Partner initiated termination — react to it
+      if (!data && !terminatedRef.current) {
+        log("Room deleted by partner");
         terminatedRef.current = true;
         setTerminated(true);
       }
     });
 
     return unsub;
-  }, [roomId, uid]);
+  }, [roomId, uid, log]);
 
   // ========================
   // Heartbeat Loop
-  //
-  // Writes our timestamp to presence/{uid}/heartbeat every 3 seconds.
-  // This is the ONLY authoritative presence mechanism — there is no
-  // onDisconnect fallback. If we stop writing, the partner will detect
-  // staleness and terminate the room.
   // ========================
 
   useEffect(() => {
     if (!roomId || !uid || terminatedRef.current) return;
 
-    const heartbeatPath = ref(getFirebaseDb(), `rooms/${roomId}/presence/${uid}/heartbeat`);
+    log("Starting heartbeat");
+    const heartbeatPath = ref(getFirebaseDb(), `rooms/${roomId}/${uid}/heartbeat`);
 
-    // Write initial heartbeat immediately (same as before — set on heartbeat path)
     set(heartbeatPath, serverTimestamp()).catch(() => {});
 
-    // Write email to presence separately (best effort — doesn't affect heartbeat)
     if (userEmail) {
-      set(ref(getFirebaseDb(), `rooms/${roomId}/presence/${uid}/email`), userEmail).catch(() => {});
+      set(ref(getFirebaseDb(), `rooms/${roomId}/${uid}/email`), userEmail).catch(() => {});
     }
 
     heartbeatIntervalRef.current = setInterval(() => {
@@ -172,50 +217,41 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
         heartbeatIntervalRef.current = null;
       }
     };
-  }, [roomId, uid, userEmail]);
+  }, [roomId, uid, userEmail, log]);
 
   // ========================
   // Partner Heartbeat Monitoring
-  //
-  // Two mechanisms work together:
-  // 1. onValue listener: fires when the partner's heartbeat value changes
-  // 2. setInterval: re-evaluates staleness every 3s, because onValue
-  //    only fires on value changes, not when time passes
-  //
-  // If the partner's heartbeat is stale for > 15 seconds, we trigger
-  // two-phase termination.
   // ========================
 
   useEffect(() => {
     if (!roomId || !partnerUid || terminatedRef.current) return;
 
+    log(`Monitoring partner ${partnerUid} heartbeat`);
     const partnerPath = ref(
       getFirebaseDb(),
-      `rooms/${roomId}/presence/${partnerUid}/heartbeat`
+      `rooms/${roomId}/${partnerUid}/heartbeat`
     );
 
-    // Listen for heartbeat value changes
     const unsub = onValue(partnerPath, (snapshot) => {
       if (terminatedRef.current) return;
       const val = snapshot.val() as number | null;
       if (val && val > 0) {
         partnerHeartbeatRef.current = val;
-        partnerEverHeartbeatRef.current = true;
-        setPartnerOnline(true);
+        if (!partnerEverHeartbeatRef.current) {
+          log("Partner first heartbeat received");
+          partnerEverHeartbeatRef.current = true;
+        }
       }
     });
 
-    // Periodically check if the heartbeat has gone stale.
-    // Only check after partner has sent at least one heartbeat —
-    // before that, the partner join timeout handles it.
     stalenessIntervalRef.current = setInterval(() => {
       if (terminatedRef.current) return;
       if (!partnerEverHeartbeatRef.current) return;
 
       const staleness = Date.now() - partnerHeartbeatRef.current;
       if (staleness > PEER_INACTIVE_THRESHOLD_MS) {
-        setPartnerOnline(false);
-        terminate("heartbeat");
+        log(`Partner heartbeat stale (${Math.round(staleness / 1000)}s) — leaving room`);
+        leaveRoom();
       }
     }, HEARTBEAT_INTERVAL_MS);
 
@@ -226,23 +262,19 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
         stalenessIntervalRef.current = null;
       }
     };
-  }, [roomId, partnerUid, terminate]);
+  }, [roomId, partnerUid, leaveRoom, log]);
 
   // ========================
   // Partner Join Timeout
-  //
-  // If the partner's heartbeat never appears within 30 seconds
-  // of room creation, the room is stale (partner never connected).
-  // Terminate and let the chat page re-queue.
   // ========================
 
   useEffect(() => {
     if (!roomId || !partnerUid || terminatedRef.current) return;
 
     partnerJoinTimeoutRef.current = setTimeout(() => {
-      // Check if partner ever wrote a real heartbeat
       if (!partnerEverHeartbeatRef.current) {
-        terminate("heartbeat");
+        log("Partner never sent heartbeat — leaving room");
+        leaveRoom();
       }
     }, PARTNER_JOIN_TIMEOUT_MS);
 
@@ -252,26 +284,55 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
         partnerJoinTimeoutRef.current = null;
       }
     };
-  }, [roomId, partnerUid, terminate]);
+  }, [roomId, partnerUid, leaveRoom, log]);
+
+  // ========================
+  // Queue Monitoring (for "Next" button)
+  //
+  // Listens on queue/ to detect available next partners.
+  // Excludes self and current partner from candidates.
+  // ========================
+
+  useEffect(() => {
+    if (!roomId || !uid || terminatedRef.current) return;
+
+    const queueRef = ref(getFirebaseDb(), "queue");
+    const unsub = onValue(queueRef, (snapshot) => {
+      if (terminatedRef.current) return;
+      const queue = snapshot.val() as Record<string, boolean> | null;
+      if (!queue) {
+        nextPartnerUidRef.current = null;
+        setNextPartnerAvailable(false);
+        return;
+      }
+      const sortedKeys = Object.keys(queue).sort();
+      const candidate = sortedKeys.find(
+        (k) => k !== uid && k !== partnerUidRef.current
+      );
+      nextPartnerUidRef.current = candidate || null;
+      setNextPartnerAvailable(!!candidate);
+      if (candidate) {
+        log(`Next partner available in queue: ${candidate}`);
+      }
+    });
+
+    return unsub;
+  }, [roomId, uid, log]);
 
   // ========================
   // Best-Effort Cleanup on Tab Close
-  //
-  // beforeunload is unreliable for async operations, but we try.
-  // The real safety net is the heartbeat timeout — if we disappear,
-  // the partner detects staleness within 15 seconds.
   // ========================
 
   useEffect(() => {
     if (!roomId || !uid) return;
 
     const handleBeforeUnload = () => {
-      terminate("user");
+      leaveRoom();
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [roomId, uid, terminate]);
+  }, [roomId, uid, leaveRoom]);
 
   // Cleanup all timers on unmount
   useEffect(() => {
@@ -280,23 +341,23 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
         clearInterval(heartbeatIntervalRef.current);
       if (stalenessIntervalRef.current)
         clearInterval(stalenessIntervalRef.current);
-      if (deletionTimeoutRef.current)
-        clearTimeout(deletionTimeoutRef.current);
       if (partnerJoinTimeoutRef.current)
         clearTimeout(partnerJoinTimeoutRef.current);
     };
   }, []);
 
-  // Derive partner's email from room presence data
-  const partnerEmail = partnerUid && room?.presence?.[partnerUid]?.email || null;
+  // Read partner email from room snapshot data
+  const roomData = room as Record<string, unknown> | null;
+  const partnerData = partnerUid && roomData ? roomData[partnerUid] as Record<string, unknown> | undefined : undefined;
+  const partnerEmail = (partnerData?.email as string) || null;
 
   return {
-    room,
     partnerUid,
     partnerEmail,
-    partnerOnline,
     terminated,
-    terminate,
+    leaveRoom,
+    skipToNext,
+    nextPartnerAvailable,
     isInitiator,
   };
 }

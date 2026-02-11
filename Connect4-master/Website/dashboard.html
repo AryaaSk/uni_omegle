@@ -1,0 +1,98 @@
+<head>
+
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.9/angular.min.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-app.js"></script> <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-database.js"></script> <!-- Firebase Database -->
+    <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-auth.js"></script> <!-- Firebase Auth -->
+    
+    <script src="firebaseFunctions.js"></script>
+    <script src="dashboard.js"></script>
+    
+    <style>
+        @import url(style.css);
+        @import url(dashboard.css);
+        @import url(gameInfo.css);
+    </style>
+</head>
+
+<body ng-app="connect4">
+    <div ng-controller="dashboard">
+        
+        <div class="container" id="container">
+            <div class="containerInner">
+
+                <!-- Shows the current user -->
+                <div ng-hide="player == null" class="playerBox" style="margin: 0 auto;" ng-init="authenticate()">
+                    <div>
+                        <h2 style="margin-top: 0; margin-bottom: 0;">{{player.name}}</h2>
+                    </div>
+                    <div>
+                        Rating: {{player.rating}}<br>
+                        Colour: <br>
+                        <div style="margin: 0 auto; margin-top: 10px; display: grid; grid-template-columns: max-content auto; width: 150px;">
+                            <div style="display: grid; place-content: center;"><div class="infoCounter"  ng-style="{'background-color': player.colour }"></div></div>
+                            <div style="display: grid; place-content: center;"><input type="color" ng-model="player.colour" style="border: 1px solid grey;"></div>
+                        </div>
+                    </div>
+                </div>
+                <br>
+                <input ng-hide="player == null" type="button" value="Logout" style="width: 300px; margin: 0 auto;" ng-click="logout()">
+
+                <br><br>
+
+                <div class="buttons">
+                    <input ng-hide="player != null" type="button" value="Login/Signup" class="dashboardButton" ng-click="loginSignup()">
+                    <div ng-hide="player != null" style="width: 100%; height: 200px;"></div> <!-- Seperator DIV -->
+                    <input type="button" value="Find Match" id="findMatchButton" class="dashboardButton" ng-click="findGame()">
+                </div>
+
+                <div id="loginSignupWrapper">
+                    <div class="loginSignup">
+                        <div class="loginSignupContainerDiv switch">
+                            <!-- Switching between login and signup, and close button-->
+                            <input type="button" value="X" class="closeButton" ng-click="hideLoginSignup()">
+                            <div class="loginSignupSwitch">
+                                <input type="button" value="Login" style="font-size: large; width: 100px; margin-right: 15px;" ng-click="showLogin()">
+                                <input type="button" value="Signup" style="font-size: large; width: 100px;" ng-click="showSignup()">
+                            </div>
+                        </div>
+    
+                        <div class="loginSignupContainerDiv content" ng-init="showLogin()">
+                            <!-- Actual Content (name, email, password) -->
+
+                            <!-- Login -->
+                            <div class="authContent" id="loginContent">
+                                <h1>Login</h1>
+
+                                <input type="text" placeholder="Email Address" class="authTextfield" ng-model="emailAddress"> <br>
+                                <input type="password" placeholder="Password" class="authTextfield" ng-model="password"> <br>
+
+                                <input type="button" value="Login" class="authButton" ng-click="login(emailAddress, password)">
+                            </div>
+
+                            <!-- Signup -->
+                            <div class="authContent" id="signupContent">
+                                <h1>Signup</h1>
+                                
+                                <input type="text" placeholder="Display Name" class="authTextfield" ng-model="displayName"> <br>
+                                <input type="text" placeholder="Email Address" class="authTextfield" ng-model="emailAddress"> <br>
+                                <input type="password" placeholder="Password" class="authTextfield" ng-model="password"> <br>
+
+                                <input type="button" value="Signup" class="authButton" ng-click="signupClicked(displayName, emailAddress, password)">
+                            </div>
+
+                        </div>
+                    </div>
+                    <div class="loginSignupShadow"></div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</body>

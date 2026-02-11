@@ -1,0 +1,140 @@
+.containerDiv
+{
+    margin: 0 auto; /*text align center wasnt working so I just applied this to all divs*/
+}
+
+.containerOuter
+{
+    height: 100%; /*embed mode doesnt work on chrome when using 100vh/100vw, so i used 100% which should do the same thing in theory*/
+    width: 100%;
+
+    /*overflow-y: hidden;*/
+}
+.container
+{
+    height: 100%;
+    width: 1300px;
+    margin: 0 auto;
+
+    display: grid;
+	grid-template-columns: 70% 30%;
+	grid-template-rows: 100%;   
+}
+@media only screen and (orientation: portrait) {
+    .container
+    {
+        height: 100%;
+        width: 800px;
+        margin: 0 auto;
+    
+        display: grid;
+        grid-template-columns: 100%;
+        grid-template-rows: max-content auto;   
+    }
+}
+
+.containerInner
+{	
+    height: calc(100% - 50px); /*to account for the padding*/
+	width: 100%;
+
+    margin: 0 auto;
+    text-align: center;
+}
+
+.connect4Grid
+{
+    height: 600px;
+    width: 700px;
+
+    display: grid;
+    grid-template-columns: 100%;
+    grid-template-rows: 1fr 1fr 1fr 1fr 1fr 1fr;
+
+    border-top: 1px solid var(--borderColour);
+    border-left: 1px solid var(--borderColour);
+}
+.connect4Row
+{
+    width: 100%;
+    height: 100%;
+
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
+}
+
+.connect4ItemContainer
+{
+    height: 100%;
+    width: 100%;
+
+    display: grid;
+    place-content: center;
+
+    border-bottom: 1px solid var(--borderColour);
+    border-right: 1px solid var(--borderColour);
+}
+.connect4ItemContainer.drop
+{
+    border-bottom: 1px solid var(--borderColourDrop);
+    border-right: 1px solid var(--borderColourDrop);
+}
+.counter
+{
+    height: 80px;
+    width: 80px;
+
+    border-radius: 40px;
+}
+.counter.drop
+{
+    opacity: 0%;
+}
+.counter.drop:hover
+{
+    opacity: 50%;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.selectColour
+{
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: white;
+	
+	display: none;
+	place-content: center; /*we will show this dynamically with javascript after checking is embed=true, it will be set to display: grid*/
+}
+.selectColourContent
+{
+	height: max-content;
+	width: max-content;
+
+	text-align: center;
+}
+
+
+
+
+
+
+
+
+
+

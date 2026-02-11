@@ -1,0 +1,87 @@
+<head>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.9/angular.min.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-app.js"></script> <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-database.js"></script> <!-- Firebase Database -->
+    <script src="https://www.gstatic.com/firebasejs/8.9.1/firebase-auth.js"></script> <!-- Firebase Auth -->
+
+    <script src="firebaseFunctions.js"></script>
+    <script src="game.js"></script>
+    
+    <style>
+        @import url(style.css);
+        @import url(game.css);
+        @import url(gameInfo.css);
+    </style>
+    
+</head>
+    
+<body ng-app="connect4">
+    <div ng-controller="game">
+
+        <div class="containerOuter" ng-init="startGame()" id="containerOuter">
+            <div class="container" id="container">
+                <div class="containerInner" id="containerInner">
+                    <h1>Connect4</h1>
+                    <h1 ng-hide="!gameOver" id="winText">{{whoWon}} Won !</h1> <!-- Need show player's name instead of colour, since I have allowed custom colours -->
+
+                    <div class="connect4Row containerDiv" style="width: 700px; height: 100px; ;border-left: 1px solid var(--borderColourDrop); border-top: 1px solid var(--borderColourDrop);">
+                        <div class="connect4ItemContainer drop" ng-click="drop(0)"><div class="counter drop" ng-style="{'background-color': currentColour }"></div></div>
+                        <div class="connect4ItemContainer drop" ng-click="drop(1)"><div class="counter drop" ng-style="{'background-color': currentColour }"></div></div>
+                        <div class="connect4ItemContainer drop" ng-click="drop(2)"><div class="counter drop" ng-style="{'background-color': currentColour }"></div></div>
+                        <div class="connect4ItemContainer drop" ng-click="drop(3)"><div class="counter drop" ng-style="{'background-color': currentColour }"></div></div>
+                        <div class="connect4ItemContainer drop" ng-click="drop(4)"><div class="counter drop" ng-style="{'background-color': currentColour }"></div></div>
+                        <div class="connect4ItemContainer drop" ng-click="drop(5)"><div class="counter drop" ng-style="{'background-color': currentColour }"></div></div>
+                        <div class="connect4ItemContainer drop" ng-click="drop(6)"><div class="counter drop" ng-style="{'background-color': currentColour }"></div></div>
+                    </div>
+        
+                    <br><br>
+        
+                    <div class="connect4Grid containerDiv">
+                        <div class="connect4Row" ng-repeat="row in grid track by $index">
+                            <div class="connect4ItemContainer" ng-repeat="item in row track by $index">
+                                <div class="counter" ng-style="{'background-color': item }">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <br>
+                    <input ng-show="gameOver == true && embed == true" type="button" value="Restart Game" style="color: blue; cursor: pointer; border: none; background-color: transparent; font-size: 30px; text-decoration: underline;" ng-click="startGame()">
+                    <input ng-show="gameOver == true && embed == false" type="button" value="Back to Dashboard" style="color: blue; cursor: pointer; border: none; background-color: transparent; font-size: 30px; text-decoration: underline;" onclick="location.href = 'index.html';">
+                </div>
+            
+                <div class="containerInner" id="playerInfo">
+                    <h1>Players</h1>
+
+                    <h2 ng-hide="currentPlayer == '' || gameOver == true">Current Move: {{currentPlayer}}</h2>
+                    <br>
+                    <div class="playerBox containerDiv" ng-repeat="player in players track by $index">
+                        <div>
+                            <h2 style="margin-top: 0; margin-bottom: 0;">{{player.name}}</h2>
+                        </div>
+                        <div>
+                            Rating: {{player.rating}}<br>
+                            Colour: <br>
+                            <div class="infoCounter" style="margin: 0 auto; margin-top: 10px;" ng-style="{'background-color': player.colour }"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+	<div class="selectColour" id="selectColour">
+		<div class="selectColourContent">
+			Colour 1: <input type="color" ng-model=players[0].colour> <br> <br>
+			Colour 2: <input type="color" ng-model=players[1].colour> <br> <br>
+
+			<input type="button" value="Done" ng-click="selectedColours()">
+		</div>
+	</div>
+	
+    </div>
+</body>
+
+<!-- Here is how to use this in embeded mode: -->
+<!-- <iframe  style="height: 1000px; width: 740px" src="https://connect4-863d1.web.app/game.html?embed=true&&scale=1"></iframe> -->
