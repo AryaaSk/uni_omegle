@@ -18,22 +18,42 @@ import { getFirebaseDb } from "@/lib/firebase";
 // TURN: relay fallback for symmetric NATs (needed for ~15-20% of connections)
 // ========================
 
-function getIceServers(): RTCIceServer[] {
-  const servers: RTCIceServer[] = [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-  ];
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+];
 
-  const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
-  if (turnUrl) {
-    servers.push({
-      urls: turnUrl,
-      username: process.env.NEXT_PUBLIC_TURN_USERNAME || "",
-      credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL || "",
-    });
+async function getIceServers(): Promise<RTCIceServer[]> {
+  // Try Cloudflare TURN (server-generated short-lived credentials)
+  try {
+    const res = await fetch("/api/turn-credentials");
+    if (res.ok) {
+      const data = await res.json();
+      if (data.iceServers && data.iceServers.length > 0) {
+        console.log("[webrtc] Using Cloudflare TURN servers");
+        return data.iceServers;
+      }
+    }
+  } catch {
+    // API route not available — fall through
   }
 
-  return servers;
+  // Fallback: static TURN from env vars (e.g. expressturn.com)
+  const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+  if (turnUrl) {
+    console.log("[webrtc] Using static TURN server from env");
+    return [
+      ...FALLBACK_ICE_SERVERS,
+      {
+        urls: turnUrl,
+        username: process.env.NEXT_PUBLIC_TURN_USERNAME || "",
+        credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL || "",
+      },
+    ];
+  }
+
+  console.warn("[webrtc] No TURN server configured — STUN only");
+  return FALLBACK_ICE_SERVERS;
 }
 
 // ========================
@@ -58,12 +78,71 @@ function getIceServers(): RTCIceServer[] {
 // - Other participant = non-initiator → waits for offer, sends answer
 // ========================
 
+// ========================
+// Diagnostics — collect detailed info when ICE fails
+// ========================
+
+interface IceDiagnostics {
+  localCandidateTypes: string[];
+  remoteCandidateTypes: string[];
+  selectedPair: string | null;
+  iceGatheringState: string;
+  iceConnectionState: string;
+  signalingState: string;
+  connectionState: string;
+  localCandidateCount: number;
+  remoteCandidateCount: number;
+  hasTurnServer: boolean;
+  hadTurnCandidate: boolean;
+}
+
+async function collectDiagnostics(pc: RTCPeerConnection): Promise<IceDiagnostics> {
+  const localTypes: string[] = [];
+  const remoteTypes: string[] = [];
+  let selectedPair: string | null = null;
+  let hadTurnCandidate = false;
+
+  try {
+    const stats = await pc.getStats();
+    stats.forEach((report) => {
+      if (report.type === "local-candidate") {
+        const ctype = report.candidateType as string;
+        if (!localTypes.includes(ctype)) localTypes.push(ctype);
+        if (ctype === "relay") hadTurnCandidate = true;
+      }
+      if (report.type === "remote-candidate") {
+        const ctype = report.candidateType as string;
+        if (!remoteTypes.includes(ctype)) remoteTypes.push(ctype);
+      }
+      if (report.type === "candidate-pair" && report.state === "succeeded") {
+        selectedPair = `${report.localCandidateId} <-> ${report.remoteCandidateId} (${report.state})`;
+      }
+    });
+  } catch {
+    // getStats can fail on a closed PC
+  }
+
+  return {
+    localCandidateTypes: localTypes,
+    remoteCandidateTypes: remoteTypes,
+    selectedPair,
+    iceGatheringState: pc.iceGatheringState,
+    iceConnectionState: pc.iceConnectionState,
+    signalingState: pc.signalingState,
+    connectionState: pc.connectionState,
+    localCandidateCount: localTypes.length,
+    remoteCandidateCount: remoteTypes.length,
+    hasTurnServer: localTypes.includes("relay") || remoteTypes.includes("relay"),
+    hadTurnCandidate,
+  };
+}
+
 interface UseWebRTCOptions {
   roomId: string;
   uid: string;
   partnerUid: string;
   isInitiator: boolean;
-  onIceFailure: () => void;
+  onIceFailure: (diagnostics?: IceDiagnostics) => void;
 }
 
 export function useWebRTC({
@@ -209,14 +288,19 @@ export function useWebRTC({
     const answerRef = ref(getFirebaseDb(), `${signalingBase}/answer`);
     const partnerCandidatesRef = ref(getFirebaseDb(), `${signalingBase}/iceCandidates/${partnerUid}`);
 
-    // Connection timeout — if not connected within 20s, trigger failure
+    // Connection timeout — if not connected within 25s, trigger failure
     // so the user isn't stuck on "Connecting..." forever.
+    // (25s gives room for the ICE restart attempt at ~15-20s)
     const connectionTimeout = setTimeout(() => {
       if (!isCancelled && pcRef.current && pcRef.current.connectionState !== "connected") {
-        log(`Connection timeout after 20s — state=${pcRef.current.connectionState}, signalingState=${pcRef.current.signalingState}`);
-        onIceFailureRef.current();
+        const pc = pcRef.current;
+        log(`Connection timeout after 25s — state=${pc.connectionState}, iceConnection=${pc.iceConnectionState}, signalingState=${pc.signalingState}`);
+        collectDiagnostics(pc).then((diag) => {
+          log(`TIMEOUT DIAGNOSTICS: ${JSON.stringify(diag)}`);
+          if (!isCancelled) onIceFailureRef.current(diag);
+        });
       }
-    }, 20_000);
+    }, 25_000);
 
     async function setup() {
       try {
@@ -237,10 +321,11 @@ export function useWebRTC({
         localStreamRef.current = stream;
         setLocalStream(stream);
 
-        // 2. Create peer connection
-        const pc = new RTCPeerConnection({
-          iceServers: getIceServers(),
-        });
+        // 2. Create peer connection with TURN credentials
+        const iceServers = await getIceServers();
+        if (isCancelled) return;
+
+        const pc = new RTCPeerConnection({ iceServers });
         pcRef.current = pc;
         log("RTCPeerConnection created");
 
@@ -262,35 +347,58 @@ export function useWebRTC({
         // 5. Send ICE candidates to RTDB as they're generated
         const myCandidatesRef = ref(getFirebaseDb(), `${signalingBase}/iceCandidates/${uid}`);
         let iceSentCount = 0;
+        const localCandidateTypes = new Set<string>();
         pc.onicecandidate = (event) => {
           if (isCancelled) return;
           if (event.candidate) {
             iceSentCount++;
-            push(myCandidatesRef, event.candidate.toJSON());
-            if (iceSentCount <= 3) {
-              log(`ICE candidate sent (#${iceSentCount}): ${event.candidate.candidate.substring(0, 50)}...`);
+            const cand = event.candidate;
+            localCandidateTypes.add(cand.type || "unknown");
+            push(myCandidatesRef, cand.toJSON());
+            if (iceSentCount <= 5) {
+              log(`ICE candidate sent (#${iceSentCount}): type=${cand.type} protocol=${cand.protocol} ${cand.candidate.substring(0, 60)}...`);
             }
           } else {
-            log(`ICE gathering complete — ${iceSentCount} candidates sent`);
+            log(`ICE gathering complete — ${iceSentCount} candidates sent, types: [${[...localCandidateTypes].join(", ")}]`);
           }
         };
 
-        // 6. Monitor connection state
+        // 6. Monitor connection state + ICE restart on failure
+        let iceRestartAttempted = false;
         pc.onconnectionstatechange = () => {
           if (isCancelled) return;
           const state = pc.connectionState;
-          log(`Connection state: ${state}`);
+          log(`Connection state: ${state} (iceConnection=${pc.iceConnectionState}, gathering=${pc.iceGatheringState})`);
           setConnectionState(state);
           if (state === "connected") {
             clearTimeout(connectionTimeout);
+            log(`Connected! Local candidate types: [${[...localCandidateTypes].join(", ")}]`);
           }
           if (state === "failed") {
-            log("Connection FAILED — calling onIceFailure");
-            onIceFailureRef.current();
+            if (!iceRestartAttempted) {
+              // Try ICE restart once before giving up
+              iceRestartAttempted = true;
+              log("Connection FAILED — attempting ICE restart");
+              pc.restartIce();
+              return;
+            }
+            log("Connection FAILED after ICE restart — collecting diagnostics");
+            collectDiagnostics(pc).then((diag) => {
+              log(`DIAGNOSTICS: ${JSON.stringify(diag)}`);
+              if (!isCancelled) onIceFailureRef.current(diag);
+            });
           }
         };
 
-        // 6b. Monitor ICE gathering state
+        // 6b. Monitor ICE connection state (more granular than connectionState)
+        pc.oniceconnectionstatechange = () => {
+          if (isCancelled) return;
+          log(`ICE connection state: ${pc.iceConnectionState}`);
+          // "disconnected" is transient — browser retries automatically.
+          // "failed" triggers onconnectionstatechange which handles restart.
+        };
+
+        // 6c. Monitor ICE gathering state
         pc.onicegatheringstatechange = () => {
           log(`ICE gathering state: ${pc.iceGatheringState}`);
         };
@@ -449,6 +557,7 @@ export function useWebRTC({
       // (the close() callback handles final unmount separately)
       if (pcRef.current) {
         pcRef.current.onconnectionstatechange = null;
+        pcRef.current.oniceconnectionstatechange = null;
         pcRef.current.onicecandidate = null;
         pcRef.current.ontrack = null;
         pcRef.current.close();

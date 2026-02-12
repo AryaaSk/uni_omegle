@@ -70,14 +70,27 @@ export default function VideoChat({
 
   const { partnerUid, partnerEmail, terminated, disconnectReason, leaveRoom, skipToNext, nextPartnerAvailable, isInitiator } = useRoom(roomId, uid, userEmail);
 
-  const handleIceFailure = useCallback(() => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleIceFailure = useCallback((diagnostics?: any) => {
     const db = getFirebaseDb();
-    push(ref(db, "errors"), {
+    const entry: Record<string, unknown> = {
       type: "ice_failure",
       roomId,
       uid,
       timestamp: Date.now(),
-    });
+    };
+    if (diagnostics) {
+      entry.localCandidateTypes = diagnostics.localCandidateTypes;
+      entry.remoteCandidateTypes = diagnostics.remoteCandidateTypes;
+      entry.selectedPair = diagnostics.selectedPair;
+      entry.iceGatheringState = diagnostics.iceGatheringState;
+      entry.iceConnectionState = diagnostics.iceConnectionState;
+      entry.signalingState = diagnostics.signalingState;
+      entry.connectionState = diagnostics.connectionState;
+      entry.hasTurnServer = diagnostics.hasTurnServer;
+      entry.hadTurnCandidate = diagnostics.hadTurnCandidate;
+    }
+    push(ref(db, "errors"), entry);
     leaveRoom("connection_failed");
   }, [leaveRoom, roomId, uid]);
 
