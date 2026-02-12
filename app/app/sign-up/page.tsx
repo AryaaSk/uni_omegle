@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -16,8 +16,11 @@ export default function SignUpPage() {
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // Suppress auto-redirect while Google sign-in is validating the email.
+  const googleInProgressRef = useRef(false);
+
   useEffect(() => {
-    if (loading) return;
+    if (loading || googleInProgressRef.current) return;
     if (user?.emailVerified) {
       router.replace("/chat");
     } else if (user) {
@@ -54,10 +57,13 @@ export default function SignUpPage() {
   async function handleGoogleSignUp() {
     setError(null);
     setGoogleLoading(true);
+    googleInProgressRef.current = true;
     try {
       await signInWithGoogle();
+      googleInProgressRef.current = false;
       router.replace("/chat");
     } catch (err: unknown) {
+      googleInProgressRef.current = false;
       const message =
         err instanceof Error ? err.message : "Google sign-up failed. Please try again.";
       setError(message);
@@ -65,7 +71,7 @@ export default function SignUpPage() {
     }
   }
 
-  if (loading || user) {
+  if (loading || (user && !googleInProgressRef.current)) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />

@@ -148,14 +148,23 @@ export function useRoom(roomId: string | null, uid: string | undefined, userEmai
       [`queue/${nextPartner}`]: null,
     };
 
-    // Move old partner to queue
+    // Clear old partner's currentRoom immediately, but delay adding
+    // them to the queue by 3s to avoid matchmaking race conditions.
     if (oldPartner) {
       updates[`users/${oldPartner}/currentRoom`] = null;
-      updates[`queue/${oldPartner}`] = true;
     }
 
     update(ref(getFirebaseDb()), updates)
-      .then(() => log(`Skip complete — now in room ${newRoomId}`))
+      .then(() => {
+        log(`Skip complete — now in room ${newRoomId}`);
+        if (oldPartner) {
+          setTimeout(() => {
+            set(ref(getFirebaseDb(), `queue/${oldPartner}`), true)
+              .then(() => log(`Old partner ${oldPartner} added to queue after delay`))
+              .catch((err) => log(`Failed to add old partner to queue: ${err}`));
+          }, 3000);
+        }
+      })
       .catch((err) => log(`Skip failed: ${err}`));
 
     return newRoomId;

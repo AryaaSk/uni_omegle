@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { getFirebaseAuth } from "@/lib/firebase";
@@ -16,8 +16,13 @@ export default function SignInPage() {
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // Suppress auto-redirect while Google sign-in is validating the email.
+  // signInWithPopup triggers onAuthStateChanged before we can check the domain,
+  // which would redirect to /chat before the non-uni error is thrown.
+  const googleInProgressRef = useRef(false);
+
   useEffect(() => {
-    if (loading) return;
+    if (loading || googleInProgressRef.current) return;
     if (user?.emailVerified) {
       router.replace("/chat");
     } else if (user) {
@@ -48,10 +53,13 @@ export default function SignInPage() {
   async function handleGoogleSignIn() {
     setError(null);
     setGoogleLoading(true);
+    googleInProgressRef.current = true;
     try {
       await signInWithGoogle();
+      googleInProgressRef.current = false;
       router.replace("/chat");
     } catch (err: unknown) {
+      googleInProgressRef.current = false;
       const message =
         err instanceof Error ? err.message : "Google sign-in failed. Please try again.";
       setError(message);
@@ -59,7 +67,7 @@ export default function SignInPage() {
     }
   }
 
-  if (loading || user) {
+  if (loading || (user && !googleInProgressRef.current)) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />

@@ -20,7 +20,7 @@ export default function Navbar() {
   return (
     <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-4 border-b border-surface-border bg-surface/80 backdrop-blur-sm">
       <Link href="/">
-        <Image src="/logo.png" alt="UniOmegle.com" width={180} height={40} className="h-8 w-auto" priority />
+        <Image src="/logo.png" alt="UniOmegle.com" width={180} height={40} className="h-10 w-auto" priority />
       </Link>
 
       <div className="flex items-center gap-4">

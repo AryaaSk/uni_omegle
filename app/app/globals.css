@@ -49,3 +49,46 @@ body {
   0%, 100% { opacity: 0; }
   50% { opacity: 1; }
 }
+
+/* Video chat — responsive grid */
+.video-grid {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  gap: 0.75rem !important;
+}
+
+@media (min-width: 1024px) {
+  .video-grid {
+    flex-direction: row !important;
+  }
+}
+
+/* Video chat — lock 16:9 aspect ratio */
+.video-slot {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.video-box {
+  position: relative !important;
+  width: 100% !important;
+  max-height: 100% !important;
+  aspect-ratio: 16 / 9 !important;
+  border-radius: 1rem !important;
+  overflow: hidden !important;
+  background: #000 !important;
+}
+
+.video-box video {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  transform: scaleX(-1) !important;
+}

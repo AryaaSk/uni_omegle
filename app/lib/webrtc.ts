@@ -301,14 +301,17 @@ export function useWebRTC({
         let iceRecvCount = 0;
 
         async function flushCandidates() {
-          if (pendingCandidates.length === 0) return;
-          log(`Flushing ${pendingCandidates.length} buffered ICE candidates`);
-          for (const c of pendingCandidates) {
+          // splice atomically drains the array — new candidates pushed
+          // by onChildAdded during the async loop are preserved.
+          const batch = pendingCandidates.splice(0, pendingCandidates.length);
+          if (batch.length === 0) return;
+          log(`Flushing ${batch.length} buffered ICE candidates`);
+          for (const c of batch) {
+            if (isCancelled) return;
             await pc.addIceCandidate(new RTCIceCandidate(c)).catch((err) => {
               log(`Failed to add buffered ICE candidate: ${err}`);
             });
           }
-          pendingCandidates.length = 0;
         }
 
         unsubs.push(onChildAdded(partnerCandidatesRef, (snapshot) => {
@@ -329,10 +332,24 @@ export function useWebRTC({
         }));
 
         // 8. SDP exchange via RTDB — depends on role
+
+        // Both sides: clear own stale ICE candidates from any previous attempt
+        log("Clearing own stale ICE candidates");
+        await remove(myCandidatesRef);
+        if (isCancelled) return;
+
+        // Session nonce — the initiator includes this in the offer and the
+        // non-initiator echoes it in the answer. This lets the initiator
+        // reject stale answers from a previous SDP exchange.
+        const sessionNonce = Math.random().toString(36).slice(2);
+
         if (isInitiator) {
-          // Clear stale signaling data from any previous setup
-          log("Initiator: clearing stale signaling data");
-          await remove(ref(getFirebaseDb(), signalingBase));
+          // Clear stale offer/answer (but not partner's ICE candidates —
+          // their onChildAdded listener may be active on that path)
+          log("Initiator: clearing stale offer/answer");
+          await remove(offerRef);
+          if (isCancelled) return;
+          await remove(answerRef);
           if (isCancelled) return;
 
           log("Initiator: creating offer");
@@ -346,6 +363,7 @@ export function useWebRTC({
           await set(offerRef, {
             type: pc.localDescription!.type,
             sdp: pc.localDescription!.sdp,
+            nonce: sessionNonce,
           });
           log("Initiator: offer written — waiting for answer");
 
@@ -353,12 +371,18 @@ export function useWebRTC({
           unsubs.push(onValue(answerRef, async (snapshot) => {
             const answer = snapshot.val();
             if (!answer || isCancelled) return;
+            // Reject stale answers from a previous SDP exchange
+            if (answer.nonce !== sessionNonce) {
+              log(`Initiator: ignoring answer — nonce mismatch (expected ${sessionNonce}, got ${answer.nonce})`);
+              return;
+            }
             log(`Initiator: answer received — signalingState=${pc.signalingState}`);
             try {
               if (pc.signalingState === "have-local-offer") {
                 await pc.setRemoteDescription(
                   new RTCSessionDescription(answer)
                 );
+                if (isCancelled) return;
                 log("Initiator: remote description set");
                 await flushCandidates();
               } else {
@@ -385,8 +409,10 @@ export function useWebRTC({
               await pc.setRemoteDescription(
                 new RTCSessionDescription(offer)
               );
+              if (isCancelled) return;
               log("Non-initiator: remote description set");
               await flushCandidates();
+              if (isCancelled) return;
               const answer = await pc.createAnswer();
               if (isCancelled) return;
               await pc.setLocalDescription(answer);
@@ -395,6 +421,7 @@ export function useWebRTC({
               await set(answerRef, {
                 type: pc.localDescription!.type,
                 sdp: pc.localDescription!.sdp,
+                nonce: offer.nonce || "",
               });
               log("Non-initiator: answer written");
             } catch (err) {

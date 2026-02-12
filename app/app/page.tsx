@@ -29,7 +29,7 @@ export default function Home() {
       <main className="flex-1 flex flex-col items-center px-4">
         {/* Hero */}
         <div className="flex flex-col items-center text-center gap-6 pt-20 pb-16">
-          <Image src="/logo.png" alt="UniOmegle.com" width={500} height={110} className="h-16 sm:h-24 w-auto" priority />
+          <Image src="/logo.png" alt="UniOmegle.com" width={500} height={110} className="h-24 sm:h-32 w-auto" priority />
           <p className="text-lg text-muted max-w-md">
             Anonymous video chat between UK university students.
           </p>

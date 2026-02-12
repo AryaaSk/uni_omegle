@@ -210,37 +210,29 @@ export default function VideoChat({
         </Link>
       </div>
 
-      {/* Remote Video — top half */}
-      <div className="flex-1 min-h-0 flex items-center justify-center">
-        <div className="relative w-full max-h-full rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: "16/9" }}>
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-          <UniBadge name={partnerUniName} logo={partnerUniLogo} fallback={partnerEmail || "Partner"} />
+      {/* Video grid — stacked on narrow, side-by-side on wide */}
+      <div className="video-grid">
+        {/* Remote Video */}
+        <div className="video-slot">
+          <div className="video-box">
+            <video ref={remoteVideoRef} autoPlay playsInline />
+            <UniBadge name={partnerUniName} logo={partnerUniLogo} fallback={partnerEmail || "Partner"} />
 
-          {isConnecting && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
-              <p className="text-muted">Connecting...</p>
-            </div>
-          )}
+            {isConnecting && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+                <p className="text-muted">Connecting...</p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Local Video — bottom half */}
-      <div className="flex-1 min-h-0 flex items-center justify-center">
-        <div className="relative w-full max-h-full rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: "16/9" }}>
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-          <UniBadge name={userUniName} logo={userUniLogo} fallback={userEmail || "You"} />
+        {/* Local Video */}
+        <div className="video-slot">
+          <div className="video-box">
+            <video ref={localVideoRef} autoPlay playsInline muted />
+            <UniBadge name={userUniName} logo={userUniLogo} fallback={userEmail || "You"} />
+          </div>
         </div>
       </div>
 
