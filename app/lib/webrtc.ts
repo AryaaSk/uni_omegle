@@ -288,19 +288,25 @@ export function useWebRTC({
     const answerRef = ref(getFirebaseDb(), `${signalingBase}/answer`);
     const partnerCandidatesRef = ref(getFirebaseDb(), `${signalingBase}/iceCandidates/${partnerUid}`);
 
-    // Connection timeout — if not connected within 25s, trigger failure
-    // so the user isn't stuck on "Connecting..." forever.
-    // (25s gives room for the ICE restart attempt at ~15-20s)
+    // Connection timeout — if not connected within 30s, trigger failure.
+    // We check BOTH connectionState and iceConnectionState because with
+    // TURN relays, iceConnectionState often reaches "connected" before
+    // connectionState does.
     const connectionTimeout = setTimeout(() => {
-      if (!isCancelled && pcRef.current && pcRef.current.connectionState !== "connected") {
-        const pc = pcRef.current;
-        log(`Connection timeout after 25s — state=${pc.connectionState}, iceConnection=${pc.iceConnectionState}, signalingState=${pc.signalingState}`);
+      if (isCancelled || !pcRef.current) return;
+      const pc = pcRef.current;
+      const isConnected =
+        pc.connectionState === "connected" ||
+        pc.iceConnectionState === "connected" ||
+        pc.iceConnectionState === "completed";
+      if (!isConnected) {
+        log(`Connection timeout after 30s — state=${pc.connectionState}, iceConnection=${pc.iceConnectionState}, signalingState=${pc.signalingState}`);
         collectDiagnostics(pc).then((diag) => {
           log(`TIMEOUT DIAGNOSTICS: ${JSON.stringify(diag)}`);
           if (!isCancelled) onIceFailureRef.current(diag);
         });
       }
-    }, 25_000);
+    }, 30_000);
 
     async function setup() {
       try {
@@ -363,26 +369,25 @@ export function useWebRTC({
           }
         };
 
-        // 6. Monitor connection state + ICE restart on failure
-        let iceRestartAttempted = false;
+        // 6. Monitor connection state
+        // Track whether we've ever been connected — don't kill a working
+        // session if a transient ICE state change happens.
+        let everConnected = false;
+
         pc.onconnectionstatechange = () => {
           if (isCancelled) return;
           const state = pc.connectionState;
           log(`Connection state: ${state} (iceConnection=${pc.iceConnectionState}, gathering=${pc.iceGatheringState})`);
           setConnectionState(state);
           if (state === "connected") {
+            everConnected = true;
             clearTimeout(connectionTimeout);
             log(`Connected! Local candidate types: [${[...localCandidateTypes].join(", ")}]`);
           }
-          if (state === "failed") {
-            if (!iceRestartAttempted) {
-              // Try ICE restart once before giving up
-              iceRestartAttempted = true;
-              log("Connection FAILED — attempting ICE restart");
-              pc.restartIce();
-              return;
-            }
-            log("Connection FAILED after ICE restart — collecting diagnostics");
+          if (state === "failed" && !everConnected) {
+            // Only trigger failure if we never successfully connected.
+            // If we were connected before, let the heartbeat system handle it.
+            log("Connection FAILED (never connected) — collecting diagnostics");
             collectDiagnostics(pc).then((diag) => {
               log(`DIAGNOSTICS: ${JSON.stringify(diag)}`);
               if (!isCancelled) onIceFailureRef.current(diag);
@@ -390,12 +395,16 @@ export function useWebRTC({
           }
         };
 
-        // 6b. Monitor ICE connection state (more granular than connectionState)
+        // 6b. Monitor ICE connection state (more granular — often updates before connectionState)
         pc.oniceconnectionstatechange = () => {
           if (isCancelled) return;
-          log(`ICE connection state: ${pc.iceConnectionState}`);
-          // "disconnected" is transient — browser retries automatically.
-          // "failed" triggers onconnectionstatechange which handles restart.
+          const iceState = pc.iceConnectionState;
+          log(`ICE connection state: ${iceState}`);
+          if (iceState === "connected" || iceState === "completed") {
+            everConnected = true;
+            clearTimeout(connectionTimeout);
+            log(`ICE connected! Local candidate types: [${[...localCandidateTypes].join(", ")}]`);
+          }
         };
 
         // 6c. Monitor ICE gathering state
