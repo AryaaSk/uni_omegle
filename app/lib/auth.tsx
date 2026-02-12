@@ -14,6 +14,9 @@ import {
   signInWithEmailAndPassword,
   sendEmailVerification,
   signOut,
+  GoogleAuthProvider,
+  signInWithPopup,
+  deleteUser,
   User,
 } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase";
@@ -38,6 +41,7 @@ interface AuthContextValue {
   loading: boolean;
   signUp: (email: string, password: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   logOut: () => Promise<void>;
   sendVerification: () => Promise<void>;
 }
@@ -79,6 +83,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
   }, []);
 
+  const signInWithGoogleFn = useCallback(async () => {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(getFirebaseAuth(), provider);
+    const googleUser = result.user;
+
+    if (!googleUser.email || !isUniversityEmail(googleUser.email)) {
+      const usedEmail = googleUser.email || "unknown";
+      // Clean up the auto-created Firebase user, then sign out
+      try {
+        await deleteUser(googleUser);
+      } catch {
+        // If delete fails (e.g. network), still sign out locally
+      }
+      await signOut(getFirebaseAuth());
+      throw new Error(
+        `${usedEmail} is not a university email. Please sign in with a Google account that uses a .ac.uk or .edu email address.`
+      );
+    }
+  }, []);
+
   const logOut = useCallback(async () => {
     await signOut(getFirebaseAuth());
   }, []);
@@ -92,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, signUp, signIn, logOut, sendVerification }}
+      value={{ user, loading, signUp, signIn, signInWithGoogle: signInWithGoogleFn, logOut, sendVerification }}
     >
       {children}
     </AuthContext.Provider>

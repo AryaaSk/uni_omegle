@@ -3,6 +3,7 @@
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { getUniversityShortName } from "@/lib/universities";
 
 export default function Navbar() {
@@ -18,8 +19,8 @@ export default function Navbar() {
 
   return (
     <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-4 border-b border-surface-border bg-surface/80 backdrop-blur-sm">
-      <Link href="/" className="text-xl font-bold">
-        uni<span className="text-primary">omegle</span>.com
+      <Link href="/">
+        <Image src="/logo.png" alt="UniOmegle.com" width={180} height={40} className="h-8 w-auto" priority />
       </Link>
 
       <div className="flex items-center gap-4">

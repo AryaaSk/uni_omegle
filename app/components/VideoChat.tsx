@@ -8,6 +8,7 @@ import { getUniversityName, getUniversityLogo } from "@/lib/universities";
 import { getFirebaseDb } from "@/lib/firebase";
 import { ref, push } from "firebase/database";
 import Image from "next/image";
+import Link from "next/link";
 
 function getDisconnectInfo(reason: string | null) {
   switch (reason) {
@@ -189,7 +190,7 @@ export default function VideoChat({
             Find New Partner
           </button>
         </div>
-        <p className="text-muted/30 text-xs select-none">uniomegle.com</p>
+        <Image src="/logo.png" alt="UniOmegle.com" width={120} height={27} className="h-5 w-auto opacity-30 select-none" />
       </div>
     );
   }
@@ -203,42 +204,44 @@ export default function VideoChat({
   return (
     <div className="fixed inset-0 flex flex-col bg-background p-3 gap-3">
       {/* Branding bar */}
-      <div className="shrink-0 text-center">
-        <span className="text-3xl font-bold">uni<span className="text-primary">omegle</span>.com</span>
+      <div className="shrink-0">
+        <Link href="/">
+          <Image src="/logo.png" alt="UniOmegle.com" width={180} height={40} className="h-8 w-auto" priority />
+        </Link>
       </div>
 
       {/* Remote Video — top half */}
-      <div className="relative flex-1 min-h-0">
-        <div className="absolute inset-0 rounded-2xl overflow-hidden">
+      <div className="flex-1 min-h-0 flex items-center justify-center">
+        <div className="relative w-full max-h-full rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: "16/9" }}>
           <video
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            className="h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover"
           />
-        </div>
-        <UniBadge name={partnerUniName} logo={partnerUniLogo} fallback={partnerEmail || "Partner"} />
+          <UniBadge name={partnerUniName} logo={partnerUniLogo} fallback={partnerEmail || "Partner"} />
 
-        {isConnecting && (
-          <div className="absolute inset-0 rounded-2xl flex flex-col items-center justify-center gap-4 bg-black/80">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
-            <p className="text-muted">Connecting...</p>
-          </div>
-        )}
+          {isConnecting && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+              <p className="text-muted">Connecting...</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Local Video — bottom half */}
-      <div className="relative flex-1 min-h-0">
-        <div className="absolute inset-0 rounded-2xl overflow-hidden">
+      <div className="flex-1 min-h-0 flex items-center justify-center">
+        <div className="relative w-full max-h-full rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: "16/9" }}>
           <video
             ref={localVideoRef}
             autoPlay
             playsInline
             muted
-            className="h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover"
           />
+          <UniBadge name={userUniName} logo={userUniLogo} fallback={userEmail || "You"} />
         </div>
-        <UniBadge name={userUniName} logo={userUniLogo} fallback={userEmail || "You"} />
       </div>
 
       {/* Controls — bottom */}

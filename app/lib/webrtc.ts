@@ -83,6 +83,8 @@ export function useWebRTC({
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const closedRef = useRef(false);
+  const onIceFailureRef = useRef(onIceFailure);
+  onIceFailureRef.current = onIceFailure;
 
   const log = useCallback((msg: string) => {
     console.log(`[webrtc] ${msg}`);
@@ -176,8 +178,25 @@ export function useWebRTC({
 
     log(`Setup starting — room=${roomId}, initiator=${isInitiator}, partner=${partnerUid}`);
 
-    // Reset so that re-runs (e.g. React strict mode remount) work
+    // Close any leftover PC from a previous effect run (e.g. strict mode remount)
+    // to prevent orphaned connections that race with the new setup.
+    if (pcRef.current) {
+      log("Closing leftover PeerConnection from previous run");
+      pcRef.current.onconnectionstatechange = null;
+      pcRef.current.onicecandidate = null;
+      pcRef.current.ontrack = null;
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+      setLocalStream(null);
+    }
+
+    // Reset so that re-runs work
     closedRef.current = false;
+    setConnectionState("new");
 
     let isCancelled = false;
 
@@ -190,12 +209,14 @@ export function useWebRTC({
     const answerRef = ref(getFirebaseDb(), `${signalingBase}/answer`);
     const partnerCandidatesRef = ref(getFirebaseDb(), `${signalingBase}/iceCandidates/${partnerUid}`);
 
-    // Signaling timeout — warn if not connected within 15s
-    const signalingTimeout = setTimeout(() => {
-      if (!isCancelled && pcRef.current?.connectionState !== "connected") {
-        log(`WARNING: Not connected after 15s — state=${pcRef.current?.connectionState}, signalingState=${pcRef.current?.signalingState}`);
+    // Connection timeout — if not connected within 20s, trigger failure
+    // so the user isn't stuck on "Connecting..." forever.
+    const connectionTimeout = setTimeout(() => {
+      if (!isCancelled && pcRef.current && pcRef.current.connectionState !== "connected") {
+        log(`Connection timeout after 20s — state=${pcRef.current.connectionState}, signalingState=${pcRef.current.signalingState}`);
+        onIceFailureRef.current();
       }
-    }, 15_000);
+    }, 20_000);
 
     async function setup() {
       try {
@@ -242,6 +263,7 @@ export function useWebRTC({
         const myCandidatesRef = ref(getFirebaseDb(), `${signalingBase}/iceCandidates/${uid}`);
         let iceSentCount = 0;
         pc.onicecandidate = (event) => {
+          if (isCancelled) return;
           if (event.candidate) {
             iceSentCount++;
             push(myCandidatesRef, event.candidate.toJSON());
@@ -255,12 +277,16 @@ export function useWebRTC({
 
         // 6. Monitor connection state
         pc.onconnectionstatechange = () => {
+          if (isCancelled) return;
           const state = pc.connectionState;
           log(`Connection state: ${state}`);
           setConnectionState(state);
+          if (state === "connected") {
+            clearTimeout(connectionTimeout);
+          }
           if (state === "failed") {
             log("Connection FAILED — calling onIceFailure");
-            onIceFailure();
+            onIceFailureRef.current();
           }
         };
 
@@ -286,6 +312,7 @@ export function useWebRTC({
         }
 
         unsubs.push(onChildAdded(partnerCandidatesRef, (snapshot) => {
+          if (isCancelled) return;
           const candidate = snapshot.val();
           if (!candidate) return;
           iceRecvCount++;
@@ -343,18 +370,16 @@ export function useWebRTC({
           }));
         } else {
           // Non-initiator: listen for offer, then create and write answer
-          // processingOffer lock prevents concurrent handling of rapid offer changes
-          let processingOffer = false;
-
           log("Non-initiator: listening for offer");
           unsubs.push(onValue(offerRef, async (snapshot) => {
             const offer = snapshot.val();
             if (!offer || isCancelled) return;
-            if (processingOffer) {
-              log("Non-initiator: skipping offer — already processing");
+            // Only process the offer once — if signalingState has progressed
+            // past "new", we already handled an offer on this PC.
+            if (pc.signalingState !== "stable" && pc.signalingState !== "have-remote-offer") {
+              log(`Non-initiator: ignoring offer — signalingState=${pc.signalingState}`);
               return;
             }
-            processingOffer = true;
             log("Non-initiator: offer received — processing");
             try {
               await pc.setRemoteDescription(
@@ -374,15 +399,13 @@ export function useWebRTC({
               log("Non-initiator: answer written");
             } catch (err) {
               log(`Non-initiator: failed to process offer: ${err}`);
-            } finally {
-              processingOffer = false;
             }
           }));
         }
       } catch (err) {
         log(`WebRTC setup FAILED: ${err}`);
         if (!isCancelled) {
-          onIceFailure();
+          onIceFailureRef.current();
         }
       }
     }
@@ -392,9 +415,23 @@ export function useWebRTC({
     return () => {
       log("Cleanup — cancelling and detaching listeners");
       isCancelled = true;
-      clearTimeout(signalingTimeout);
-      // Properly unsubscribe each listener individually
+      clearTimeout(connectionTimeout);
       unsubs.forEach((fn) => fn());
+
+      // Close the PC from this run so it doesn't linger as an orphan
+      // (the close() callback handles final unmount separately)
+      if (pcRef.current) {
+        pcRef.current.onconnectionstatechange = null;
+        pcRef.current.onicecandidate = null;
+        pcRef.current.ontrack = null;
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => t.stop());
+        localStreamRef.current = null;
+        setLocalStream(null);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, uid, partnerUid, isInitiator]);
