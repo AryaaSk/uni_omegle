@@ -293,18 +293,6 @@ export default function VideoChat({
             End Chat
           </button>
 
-          <button
-            onClick={handleNext}
-            disabled={!nextPartnerAvailable}
-            className={`rounded-full px-5 py-3 text-sm font-medium transition-all ${
-              nextPartnerAvailable
-                ? "bg-primary text-background hover:bg-primary-dark"
-                : "bg-surface-light text-muted/50 cursor-not-allowed"
-            }`}
-          >
-            Next
-          </button>
-
         </div>
       </div>
     </div>
